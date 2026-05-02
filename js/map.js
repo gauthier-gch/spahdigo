@@ -25,7 +25,7 @@ function initMap() {
   const btn = document.createElement("button");
   btn.id = "btn-noter-bar";
   btn.className = "btn btn-primary";
-  btn.textContent = "ðŸº Noter un bar";
+  btn.textContent = "🍺 Noter un bar";
   mapContainer.appendChild(btn);
 
   // Init Leaflet with dark tile
@@ -36,7 +36,7 @@ function initMap() {
   });
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    attribution: "Â© OpenStreetMap Â© CartoDB",
+    attribution: "© OpenStreetMap © CartoDB",
     subdomains: "abcd",
     maxZoom: 19
   }).addTo(leafletMap);
@@ -65,7 +65,7 @@ export function addBarMarker(id, bar) {
   if (!leafletMap) return;
   const icon = L.divIcon({
     className: "",
-    html: `<div class="bar-marker"><span>ðŸº</span></div>`,
+    html: `<div class="bar-marker"><span>🍺</span></div>`,
     iconSize: [28, 28],
     iconAnchor: [14, 28],
     popupAnchor: [0, -30]
@@ -73,7 +73,7 @@ export function addBarMarker(id, bar) {
 
   const avgScore = bar.totalScore && bar.ratingCount
     ? (bar.totalScore / bar.ratingCount).toFixed(1)
-    : "â€”";
+    : "—";
 
   L.marker([bar.lat, bar.lng], { icon })
     .addTo(leafletMap)
