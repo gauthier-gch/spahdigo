@@ -6,7 +6,10 @@ import {
   onAuthStateChanged,
   updateProfile
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  doc, setDoc, getDoc, getDocs,
+  collection, query, where, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // Tab switching
 document.querySelectorAll(".auth-tab").forEach(tab => {
@@ -35,30 +38,35 @@ document.getElementById("btn-login").addEventListener("click", async () => {
 
 // Register
 document.getElementById("btn-register").addEventListener("click", async () => {
-  const pseudo   = document.getElementById("reg-pseudo").value.trim();
+  const pseudo    = document.getElementById("reg-pseudo").value.trim().toLowerCase();
   const firstname = document.getElementById("reg-firstname").value.trim();
   const lastname  = document.getElementById("reg-lastname").value.trim();
   const name      = firstname + " " + lastname;
-  const email    = document.getElementById("reg-email").value.trim();
-  const phone    = document.getElementById("reg-phone").value.trim();
-  const password = document.getElementById("reg-password").value;
-  const errEl    = document.getElementById("auth-error");
+  const email     = document.getElementById("reg-email").value.trim();
+  const phone     = document.getElementById("reg-phone").value.trim();
+  const password  = document.getElementById("reg-password").value;
+  const errEl     = document.getElementById("auth-error");
   errEl.textContent = "";
 
   if (!pseudo || !firstname || !lastname || !email || !phone || !password) {
-    errEl.textContent = "Veuillez remplir tous les champs.";
-    return;
+    errEl.textContent = "Veuillez remplir tous les champs."; return;
   }
   if (pseudo.length < 3) {
-    errEl.textContent = "Le pseudo doit faire au moins 3 caracteres.";
-    return;
+    errEl.textContent = "Le pseudo doit faire au moins 3 caracteres."; return;
   }
+
+  // ── Check pseudo uniqueness ──────────────────────────────────
+  const pseudoSnap = await getDocs(query(collection(db, "users"), where("pseudo", "==", pseudo)));
+  if (!pseudoSnap.empty) {
+    errEl.textContent = "Ce pseudo est deja pris, choisis-en un autre."; return;
+  }
+
   try {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
-    // Store pseudo as displayName so it shows everywhere in the app
     await updateProfile(cred.user, { displayName: pseudo });
     await setDoc(doc(db, "users", cred.user.uid), {
       pseudo, firstname, lastname, name, email, phone,
+      photoURL: "",
       createdAt: serverTimestamp(),
       friends: []
     });
