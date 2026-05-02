@@ -6,25 +6,25 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { loadBarsOnMap, addBarMarker } from "./map.js";
 
-// â”€â”€ Criteria with weights â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Criteria with weights ──────────────────────────────────────
 const CRITERIA = [
-  { key: "prix_biere",    label: "Prix BiÃ¨re",           weight: 3   },
+  { key: "prix_biere",    label: "Prix Bière",           weight: 3   },
   { key: "prix_vin",      label: "Prix Vin",             weight: 3   },
-  { key: "gout_vin",      label: "GoÃ»t Vin",             weight: 2   },
+  { key: "gout_vin",      label: "Goût Vin",             weight: 2   },
   { key: "ambiance",      label: "Ambiance",             weight: 1   },
   { key: "plage_hh",      label: "Plage Happy Hour",     weight: 2   },
   { key: "distance_maison", label: "Distance Maison",    weight: 3   },
   { key: "distance_travail", label: "Distance Travail",  weight: 2   },
-  { key: "beaute",        label: "BeautÃ©",               weight: 1   },
-  { key: "variete_carte", label: "VariÃ©tÃ© Carte",        weight: 1.5 },
-  { key: "viabilite_saisonniere", label: "ViabilitÃ© SaisonniÃ¨re", weight: 1.5 },
+  { key: "beaute",        label: "Beauté",               weight: 1   },
+  { key: "variete_carte", label: "Variété Carte",        weight: 1.5 },
+  { key: "viabilite_saisonniere", label: "Viabilité Saisonnière", weight: 1.5 },
   { key: "places",        label: "Places",               weight: 2   },
   { key: "toilettes",     label: "Toilettes",            weight: 1   },
 ];
 
 const TOTAL_WEIGHT = CRITERIA.reduce((sum, c) => sum + c.weight, 0);
 
-// â”€â”€ DOM refs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── DOM refs ───────────────────────────────────────────────────
 const modal        = document.getElementById("modal-rate");
 const stepSearch   = document.getElementById("step-search");
 const stepCreate   = document.getElementById("step-create");
@@ -35,7 +35,7 @@ const criteriaList = document.getElementById("criteria-list");
 
 let selectedBar = null; // { id, name, address, lat, lng } or null for new
 
-// â”€â”€ Open/close modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Open/close modal ───────────────────────────────────────────
 window.addEventListener("open-rate-modal", () => resetToSearch());
 
 document.getElementById("close-rate-modal").addEventListener("click", () => {
@@ -51,7 +51,7 @@ function resetToSearch() {
   selectedBar = null;
 }
 
-// â”€â”€ Search bars â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Search bars ────────────────────────────────────────────────
 let allBars = [];
 async function fetchAllBars() {
   if (allBars.length > 0) return;
@@ -75,7 +75,7 @@ searchInput.addEventListener("input", async () => {
   });
 });
 
-// â”€â”€ Create new bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Create new bar ─────────────────────────────────────────────
 document.getElementById("btn-create-bar").addEventListener("click", () => {
   stepSearch.classList.add("hidden");
   stepCreate.classList.remove("hidden");
@@ -109,7 +109,7 @@ document.getElementById("btn-save-new-bar").addEventListener("click", async () =
   openRateStep(bar);
 });
 
-// â”€â”€ Rating step â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Rating step ────────────────────────────────────────────────
 function openRateStep(bar) {
   selectedBar = bar;
   stepSearch.classList.add("hidden");
@@ -127,7 +127,7 @@ function buildCriteriaUI() {
     div.innerHTML = `
       <label>
         <span>${c.label}</span>
-        <span class="weight">Ã—${c.weight}</span>
+        <span class="weight">×${c.weight}</span>
         <span class="score-display" id="disp-${c.key}">5</span>
       </label>
       <input type="range" min="0" max="10" step="0.5" value="5"
@@ -140,7 +140,7 @@ function buildCriteriaUI() {
   });
 }
 
-// â”€â”€ Submit rating â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Submit rating ──────────────────────────────────────────────
 document.getElementById("btn-submit-rating").addEventListener("click", async () => {
   if (!selectedBar) return;
   const user = auth.currentUser;
@@ -174,5 +174,5 @@ document.getElementById("btn-submit-rating").addEventListener("click", async () 
   modal.classList.add("hidden");
   allBars = [];
   loadBarsOnMap();
-  alert(`Note envoyÃ©e pour ${selectedBar.name} ! Score : ${globalScore.toFixed(1)}/10 ðŸº`);
+  alert(`Note envoyee pour ${selectedBar.name} ! Score : ${globalScore.toFixed(1)}/10 🍺`);
 });
