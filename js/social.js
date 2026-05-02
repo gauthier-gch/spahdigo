@@ -13,10 +13,47 @@ const VERIFIED_PSEUDOS = ["gauthier"];
 
 function verifiedBadge(pseudo) {
   if (!pseudo) return "";
-  return VERIFIED_PSEUDOS.includes(pseudo.toLowerCase())
-    ? `<span title="Compte verifie" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:#1d9bf0;border-radius:50%;margin-left:4px;font-size:10px;vertical-align:middle;flex-shrink:0;">&#10003;</span>`
-    : "";
+  if (!VERIFIED_PSEUDOS.includes(pseudo.toLowerCase())) return "";
+  return `<span
+    title="Compte verifie"
+    onclick="event.stopPropagation();showCertifTooltip(this)"
+    style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:#1d9bf0;border-radius:50%;margin-left:4px;font-size:10px;vertical-align:middle;flex-shrink:0;cursor:pointer;">&#10003;</span>`;
 }
+
+window.showCertifTooltip = function(el) {
+  // Remove any existing tooltip
+  document.querySelectorAll(".certif-tooltip").forEach(t => t.remove());
+
+  const tooltip = document.createElement("div");
+  tooltip.className = "certif-tooltip";
+  tooltip.textContent = "Pour avoir une chance d'obtenir la certif, n'h\u00e9site pas \u00e0 payer des verres \u00e0 @gauthier \uD83C\uDF7A";
+  tooltip.style.cssText = `
+    position:fixed;
+    background:#1d9bf0;
+    color:#fff;
+    padding:10px 14px;
+    border-radius:12px;
+    font-size:13px;
+    font-family:var(--font-body);
+    max-width:240px;
+    line-height:1.4;
+    box-shadow:0 4px 20px rgba(0,0,0,.4);
+    z-index:9999;
+    animation:fadeInUp .15s ease;
+  `;
+
+  // Position near the badge
+  const rect = el.getBoundingClientRect();
+  tooltip.style.left = Math.min(rect.left - 100, window.innerWidth - 260) + "px";
+  tooltip.style.top  = (rect.bottom + 8) + "px";
+
+  document.body.appendChild(tooltip);
+
+  // Close on next tap anywhere
+  setTimeout(() => {
+    document.addEventListener("click", () => tooltip.remove(), { once: true });
+  }, 50);
+};
 
 window.addEventListener("user-ready", () => {
   renderSocialPage();
