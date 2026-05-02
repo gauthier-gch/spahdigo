@@ -274,10 +274,13 @@ async function loadFriends() {
     const fSnap = await getDoc(doc(db, "users", fid));
     if (!fSnap.exists()) continue;
     const f = fSnap.data();
+    const photoHTML = f.photoURL
+      ? `<img src="${f.photoURL}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+      : "&#129489;";
     const card = document.createElement("div");
     card.style.cssText = "display:flex;align-items:center;gap:12px;padding:12px;border-radius:var(--radius);margin-bottom:6px;cursor:pointer;transition:background .15s;";
     card.innerHTML = `
-      <div class="avatar" style="width:44px;height:44px;font-size:18px;">&#129489;</div>
+      <div class="avatar" style="width:44px;height:44px;font-size:18px;overflow:hidden;">${photoHTML}</div>
       <div style="flex:1;">
         <div style="font-weight:600;font-size:14px;">@${f.pseudo}</div>
         <div style="color:var(--muted);font-size:12px;">${f.name || ""}</div>
@@ -321,15 +324,22 @@ async function loadConversations() {
     // Get other member's pseudo
     const otherId = convo.members.find(uid => uid !== me.uid);
     let otherPseudo = "Conversation";
+    let otherPhoto  = "";
     if (otherId) {
       const otherSnap = await getDoc(doc(db, "users", otherId));
-      if (otherSnap.exists()) otherPseudo = "@" + (otherSnap.data().pseudo || otherId);
+      if (otherSnap.exists()) {
+        otherPseudo = "@" + (otherSnap.data().pseudo || otherId);
+        otherPhoto  = otherSnap.data().photoURL || "";
+      }
     }
+    const photoHTML = otherPhoto
+      ? `<img src="${otherPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+      : "&#129489;";
 
     const item = document.createElement("div");
     item.style.cssText = "display:flex;align-items:center;gap:14px;padding:12px;border-radius:var(--radius);cursor:pointer;transition:background .15s;margin-bottom:4px;";
     item.innerHTML = `
-      <div class="avatar" style="width:46px;height:46px;font-size:18px;">&#129489;</div>
+      <div class="avatar" style="width:46px;height:46px;font-size:18px;overflow:hidden;">${photoHTML}</div>
       <div style="flex:1;min-width:0;">
         <div style="font-weight:600;font-size:14px;">${otherPseudo}</div>
         <div style="color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
@@ -421,27 +431,142 @@ function openChat(convoId, title) {
 }
 
 // ── Edit profile ───────────────────────────────────────────────
-function openEditProfile() {
+async function openEditProfile() {
   const user = auth.currentUser;
+
+  // Load current data
+  const userSnap = await getDoc(doc(db, "users", user.uid));
+  const userData = userSnap.data() || {};
+  const currentPhoto = userData.photoURL || "";
+
   const overlay = document.createElement("div");
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:2000;display:flex;align-items:center;justify-content:center;padding:24px;";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto;";
   overlay.innerHTML = `
     <div style="background:var(--dark2);border-radius:24px;padding:24px;width:100%;max-width:360px;border:1px solid var(--border);">
-      <h3 style="font-family:var(--font-display);font-size:24px;color:var(--gold);margin-bottom:16px;">Mon profil</h3>
-      <input id="profile-pseudo" class="input" value="${user.displayName || ""}" placeholder="Pseudo" style="margin-bottom:12px;" />
+      <h3 style="font-family:var(--font-display);font-size:24px;color:var(--gold);margin-bottom:20px;">Mon profil</h3>
+
+      <!-- Avatar -->
+      <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:20px;gap:12px;">
+        <div id="avatar-preview" style="
+          width:90px;height:90px;border-radius:50%;
+          background:var(--dark3);border:2px solid var(--border);
+          overflow:hidden;display:flex;align-items:center;justify-content:center;
+          font-size:36px;cursor:pointer;position:relative;
+        ">
+          ${currentPhoto
+            ? `<img src="${currentPhoto}" style="width:100%;height:100%;object-fit:cover;" />`
+            : "&#129489;"}
+          <div style="position:absolute;inset:0;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;opacity:0;transition:all .2s;border-radius:50%;" class="avatar-overlay">
+            <span style="font-size:22px;">&#128247;</span>
+          </div>
+        </div>
+        <input type="file" id="photo-input" accept="image/*" style="display:none;" />
+        <button id="btn-change-photo" style="background:var(--dark3);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;font-family:var(--font-body);">
+          Changer la photo
+        </button>
+        <p id="photo-status" style="font-size:11px;color:var(--muted);"></p>
+      </div>
+
+      <input id="profile-pseudo" class="input" value="${userData.pseudo || user.displayName || ""}" placeholder="Pseudo" style="margin-bottom:12px;" />
       <button id="btn-save-profile" class="btn btn-primary" style="margin-bottom:8px;">Enregistrer</button>
       <button id="close-profile" class="btn btn-ghost">Annuler</button>
     </div>
   `;
   document.body.appendChild(overlay);
+
+  // Hover effect on avatar
+  const avatarEl = document.getElementById("avatar-preview");
+  const avatarOverlay = avatarEl.querySelector(".avatar-overlay");
+  avatarEl.addEventListener("mouseenter", () => { avatarOverlay.style.opacity = "1"; avatarOverlay.style.background = "rgba(0,0,0,0.45)"; });
+  avatarEl.addEventListener("mouseleave", () => { avatarOverlay.style.opacity = "0"; avatarOverlay.style.background = "rgba(0,0,0,0)"; });
+  avatarEl.addEventListener("click", () => document.getElementById("photo-input").click());
+
+  // Photo change button
+  document.getElementById("btn-change-photo").addEventListener("click", () => {
+    document.getElementById("photo-input").click();
+  });
+
+  // File selected → compress and preview
+  let newPhotoBase64 = null;
+  document.getElementById("photo-input").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const statusEl = document.getElementById("photo-status");
+
+    if (file.size > 5 * 1024 * 1024) {
+      statusEl.textContent = "Image trop grande (max 5 Mo).";
+      statusEl.style.color = "var(--danger)";
+      return;
+    }
+
+    statusEl.textContent = "Compression...";
+    statusEl.style.color = "var(--muted)";
+
+    // Compress to max 200x200 using canvas
+    const base64 = await compressImage(file, 200);
+    newPhotoBase64 = base64;
+
+    // Preview
+    avatarEl.innerHTML = `<img src="${base64}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
+    statusEl.textContent = "Photo prete !";
+    statusEl.style.color = "var(--gold)";
+  });
+
   document.getElementById("close-profile").addEventListener("click", () => overlay.remove());
+
   document.getElementById("btn-save-profile").addEventListener("click", async () => {
-    const pseudo = document.getElementById("profile-pseudo").value.trim();
+    const pseudo = document.getElementById("profile-pseudo").value.trim().toLowerCase();
+    const saveBtn = document.getElementById("btn-save-profile");
     if (!pseudo) return;
+
+    saveBtn.textContent = "Sauvegarde...";
+    saveBtn.disabled = true;
+
+    // Check pseudo uniqueness (only if changed)
+    if (pseudo !== userData.pseudo) {
+      const snap = await getDocs(query(collection(db, "users"), where("pseudo", "==", pseudo)));
+      if (!snap.empty) {
+        saveBtn.textContent = "Enregistrer";
+        saveBtn.disabled = false;
+        document.getElementById("photo-status").textContent = "Ce pseudo est deja pris.";
+        document.getElementById("photo-status").style.color = "var(--danger)";
+        return;
+      }
+    }
+
+    const updates = { pseudo };
+    if (newPhotoBase64) updates.photoURL = newPhotoBase64;
+
     const { updateProfile } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-    await updateProfile(user, { displayName: pseudo });
-    await updateDoc(doc(db, "users", user.uid), { pseudo });
+    await updateProfile(user, {
+      displayName: pseudo,
+      ...(newPhotoBase64 ? { photoURL: newPhotoBase64 } : {})
+    });
+    await updateDoc(doc(db, "users", user.uid), updates);
+
     overlay.remove();
-    alert("Profil mis a jour !");
+    renderSocialPage(); // refresh to show new photo
+  });
+}
+
+// ── Image compression helper ───────────────────────────────────
+function compressImage(file, maxSize) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let w = img.width, h = img.height;
+        if (w > h) { if (w > maxSize) { h = h * maxSize / w; w = maxSize; } }
+        else       { if (h > maxSize) { w = w * maxSize / h; h = maxSize; } }
+        canvas.width  = w;
+        canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.75));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
   });
 }
