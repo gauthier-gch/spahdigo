@@ -8,6 +8,16 @@ import {
 
 const page = document.getElementById("page-social");
 
+// ── Verified users (add pseudos here to grant badge) ──────────
+const VERIFIED_PSEUDOS = ["gauthier"];
+
+function verifiedBadge(pseudo) {
+  if (!pseudo) return "";
+  return VERIFIED_PSEUDOS.includes(pseudo.toLowerCase())
+    ? `<span title="Compte verifie" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:#1d9bf0;border-radius:50%;margin-left:4px;font-size:10px;vertical-align:middle;flex-shrink:0;">&#10003;</span>`
+    : "";
+}
+
 window.addEventListener("user-ready", () => {
   renderSocialPage();
 });
@@ -110,7 +120,7 @@ async function searchByPseudo() {
     card.innerHTML = `
       <div class="avatar" style="width:40px;height:40px;font-size:16px;">&#129489;</div>
       <div style="flex:1;">
-        <div style="font-weight:600;font-size:14px;">@${u.pseudo}</div>
+        <div style="font-weight:600;font-size:14px;">@${u.pseudo}${verifiedBadge(u.pseudo)}</div>
         <div style="color:var(--muted);font-size:12px;">${u.name || ""}</div>
       </div>
       <button data-uid="${d.id}" data-pseudo="${u.pseudo}" class="btn-add-friend btn btn-primary" style="width:auto;padding:8px 14px;font-size:12px;">
@@ -195,7 +205,7 @@ async function loadRequests() {
     card.innerHTML = `
       <div class="avatar" style="width:42px;height:42px;font-size:17px;">&#129489;</div>
       <div style="flex:1;">
-        <div style="font-weight:600;font-size:14px;">@${req.fromPseudo}</div>
+        <div style="font-weight:600;font-size:14px;">@${req.fromPseudo}${verifiedBadge(req.fromPseudo)}</div>
         <div style="color:var(--muted);font-size:12px;">souhaite vous ajouter</div>
       </div>
       <div style="display:flex;gap:6px;">
@@ -282,7 +292,7 @@ async function loadFriends() {
     card.innerHTML = `
       <div class="avatar" style="width:44px;height:44px;font-size:18px;overflow:hidden;">${photoHTML}</div>
       <div style="flex:1;">
-        <div style="font-weight:600;font-size:14px;">@${f.pseudo}</div>
+        <div style="font-weight:600;font-size:14px;display:flex;align-items:center;">@${f.pseudo}${verifiedBadge(f.pseudo)}</div>
         <div style="color:var(--muted);font-size:12px;">${f.name || ""}</div>
       </div>
       <button data-uid="${fid}" data-pseudo="${f.pseudo}" class="btn-message" style="background:var(--dark3);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;">
@@ -341,7 +351,7 @@ async function loadConversations() {
     item.innerHTML = `
       <div class="avatar" style="width:46px;height:46px;font-size:18px;overflow:hidden;">${photoHTML}</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;font-size:14px;">${otherPseudo}</div>
+        <div style="font-weight:600;font-size:14px;display:flex;align-items:center;">${otherPseudo}${verifiedBadge(otherPseudo.replace("@",""))}</div>
         <div style="color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           ${convo.lastMessage || "Commencer la discussion..."}
         </div>
@@ -502,13 +512,13 @@ async function openEditProfile() {
     statusEl.textContent = "Compression...";
     statusEl.style.color = "var(--muted)";
 
-    // Compress to max 200x200 using canvas
-    const base64 = await compressImage(file, 200);
+    // Compress aggressively: max 120px, quality 0.6 → stays well under 50KB
+    const base64 = await compressImage(file, 120, 0.6);
+    const sizeKB  = Math.round((base64.length * 3) / 4 / 1024);
     newPhotoBase64 = base64;
 
-    // Preview
     avatarEl.innerHTML = `<img src="${base64}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
-    statusEl.textContent = "Photo prete !";
+    statusEl.textContent = `Photo prete ! (~${sizeKB} Ko)`;
     statusEl.style.color = "var(--gold)";
   });
 
@@ -517,40 +527,49 @@ async function openEditProfile() {
   document.getElementById("btn-save-profile").addEventListener("click", async () => {
     const pseudo = document.getElementById("profile-pseudo").value.trim().toLowerCase();
     const saveBtn = document.getElementById("btn-save-profile");
+    const statusEl = document.getElementById("photo-status");
     if (!pseudo) return;
 
     saveBtn.textContent = "Sauvegarde...";
     saveBtn.disabled = true;
+    statusEl.textContent = "";
 
-    // Check pseudo uniqueness (only if changed)
-    if (pseudo !== userData.pseudo) {
-      const snap = await getDocs(query(collection(db, "users"), where("pseudo", "==", pseudo)));
-      if (!snap.empty) {
-        saveBtn.textContent = "Enregistrer";
-        saveBtn.disabled = false;
-        document.getElementById("photo-status").textContent = "Ce pseudo est deja pris.";
-        document.getElementById("photo-status").style.color = "var(--danger)";
-        return;
+    try {
+      // Check pseudo uniqueness (only if changed)
+      if (pseudo !== userData.pseudo) {
+        const snap = await getDocs(query(collection(db, "users"), where("pseudo", "==", pseudo)));
+        if (!snap.empty) {
+          saveBtn.textContent = "Enregistrer";
+          saveBtn.disabled = false;
+          statusEl.textContent = "Ce pseudo est deja pris.";
+          statusEl.style.color = "var(--danger)";
+          return;
+        }
       }
+
+      // Only update displayName in Auth (no photoURL - base64 not supported there)
+      const { updateProfile } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+      await updateProfile(user, { displayName: pseudo });
+
+      // Save everything to Firestore only
+      const updates = { pseudo };
+      if (newPhotoBase64) updates.photoURL = newPhotoBase64;
+      await updateDoc(doc(db, "users", user.uid), updates);
+
+      overlay.remove();
+      renderSocialPage();
+    } catch (e) {
+      saveBtn.textContent = "Enregistrer";
+      saveBtn.disabled = false;
+      statusEl.textContent = "Erreur lors de la sauvegarde. Reessaie.";
+      statusEl.style.color = "var(--danger)";
+      console.error(e);
     }
-
-    const updates = { pseudo };
-    if (newPhotoBase64) updates.photoURL = newPhotoBase64;
-
-    const { updateProfile } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-    await updateProfile(user, {
-      displayName: pseudo,
-      ...(newPhotoBase64 ? { photoURL: newPhotoBase64 } : {})
-    });
-    await updateDoc(doc(db, "users", user.uid), updates);
-
-    overlay.remove();
-    renderSocialPage(); // refresh to show new photo
   });
 }
 
 // ── Image compression helper ───────────────────────────────────
-function compressImage(file, maxSize) {
+function compressImage(file, maxSize, quality = 0.6) {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -558,12 +577,12 @@ function compressImage(file, maxSize) {
       img.onload = () => {
         const canvas = document.createElement("canvas");
         let w = img.width, h = img.height;
-        if (w > h) { if (w > maxSize) { h = h * maxSize / w; w = maxSize; } }
-        else       { if (h > maxSize) { w = w * maxSize / h; h = maxSize; } }
+        if (w > h) { if (w > maxSize) { h = Math.round(h * maxSize / w); w = maxSize; } }
+        else       { if (h > maxSize) { w = Math.round(w * maxSize / h); h = maxSize; } }
         canvas.width  = w;
         canvas.height = h;
         canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", 0.75));
+        resolve(canvas.toDataURL("image/jpeg", quality));
       };
       img.src = e.target.result;
     };
