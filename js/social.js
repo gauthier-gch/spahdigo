@@ -46,7 +46,7 @@ async function loadConversations() {
 
   if (snap.empty) {
     list.innerHTML = `<p style="color:var(--muted);padding:16px;font-size:13px;text-align:center;">
-      Pas encore de conversations.<br/>Ajoutez des amis pour commencer !
+      Pas encore de conversations.<br/>Ajoutez des amis pour commencer!
     </p>`;
     return;
   }
@@ -156,7 +156,7 @@ function openAddFriend() {
   document.getElementById("btn-find-friend").addEventListener("click", async () => {
     const email  = document.getElementById("friend-email").value.trim();
     const result = document.getElementById("friend-result");
-    result.innerHTML = "<p style='color:var(--muted);font-size:13px;'>Rechercheâ€¦</p>";
+    result.innerHTML = "<p style='color:var(--muted);font-size:13px;'>Recherche...</p>";
 
     const q    = query(collection(db, "users"), where("email", "==", email));
     const snap = await getDocs(q);
@@ -170,7 +170,7 @@ function openAddFriend() {
       <div style="display:flex;align-items:center;gap:12px;padding:12px 0;">
         <div class="avatar">ðŸ§‘</div>
         <div style="flex:1;">
-          <div style="font-weight:600;">${friendData.name}</div>
+          <div style="font-weight:600;">${friendData.pseudo || friendData.name}</div>
           <div style="color:var(--muted);font-size:12px;">${friendData.email}</div>
         </div>
         <button id="btn-start-chat" class="btn btn-primary" style="width:auto;padding:10px 16px;font-size:13px;">
@@ -195,7 +195,7 @@ function openAddFriend() {
       if (!existingId) {
         const ref = await addDoc(collection(db, "conversations"), {
           members:     [user.uid, friendDoc.id],
-          memberNames: [user.displayName, friendData.name],
+          memberNames: [user.displayName, friendData.pseudo || friendData.name],
           isGroup:     false,
           lastMessage: "",
           updatedAt:   serverTimestamp()
@@ -204,7 +204,7 @@ function openAddFriend() {
       }
       overlay.remove();
       loadConversations();
-      openChat(existingId, friendData.name, {});
+      openChat(existingId, friendData.pseudo || friendData.name, {});
     });
   });
 }
@@ -230,7 +230,7 @@ function openEditProfile() {
     const { updateProfile } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
     await updateProfile(user, { displayName: name });
     overlay.remove();
-    alert("Profil mis Ã  jour !");
+    alert("Profil mis a jour !");
   });
 }
 
