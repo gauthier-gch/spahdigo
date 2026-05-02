@@ -483,3 +483,44 @@ textarea.input {
   font-family: var(--font-body);
   line-height: 1.5;
 }
+
+/* ── LOGO ─────────────────────────────────────────────────────── */
+.logo-img {
+  width: 180px;
+  max-width: 70vw;
+  object-fit: contain;
+  filter: drop-shadow(0 0 20px rgba(245,166,35,.35));
+}
+
+/* ── TOP BAR ──────────────────────────────────────────────────── */
+.app-topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 48px;
+  background: rgba(13,13,13,0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  z-index: 200;
+  border-bottom: 1px solid var(--border);
+  padding-top: env(safe-area-inset-top);
+}
+.topbar-logo {
+  height: 28px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px rgba(245,166,35,.3));
+}
+
+/* Push pages down to account for topbar */
+#app-screen .page {
+  padding-top: calc(48px + env(safe-area-inset-top));
+}
+/* Map page: topbar is transparent overlay, map fills full height */
+#page-map {
+  padding-top: 0 !important;
+}
+#btn-noter-bar {
+  bottom: calc(var(--nav-h) + 20px);
+}
