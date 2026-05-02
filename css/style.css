@@ -477,3 +477,9 @@ input[type="range"]::-webkit-slider-thumb {
 .popup-bar-name { font-family: var(--font-display); font-size: 20px; color: var(--gold); letter-spacing: 1px; }
 .popup-bar-score { font-size: 13px; color: var(--muted); margin-top: 4px; }
 .popup-bar-score strong { color: var(--text); }
+
+/* Textarea */
+textarea.input {
+  font-family: var(--font-body);
+  line-height: 1.5;
+}
