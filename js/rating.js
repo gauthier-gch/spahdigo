@@ -49,6 +49,8 @@ function resetToSearch() {
   searchInput.value = "";
   searchResults.innerHTML = "";
   selectedBar = null;
+  const commentEl = document.getElementById("rating-comment");
+  if (commentEl) commentEl.value = "";
 }
 
 // ── Search bars ────────────────────────────────────────────────
@@ -155,6 +157,8 @@ document.getElementById("btn-submit-rating").addEventListener("click", async () 
   });
   const globalScore = weightedSum / TOTAL_WEIGHT;
 
+  const comment = document.getElementById("rating-comment").value.trim();
+
   await addDoc(collection(db, "ratings"), {
     barId:   selectedBar.id,
     barName: selectedBar.name,
@@ -162,6 +166,7 @@ document.getElementById("btn-submit-rating").addEventListener("click", async () 
     userName: user.displayName || "Anonyme",
     scores,
     globalScore,
+    comment: comment || "",
     createdAt: serverTimestamp()
   });
 
