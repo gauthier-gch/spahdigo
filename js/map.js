@@ -3,7 +3,7 @@ import { db } from "./firebase-config.js";
 import { collection, getDocs, query, where, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ── Verified badge (keep in sync with social.js) ───────────────
-const VERIFIED_PSEUDOS = ["gauthier", "gauthierslay"];
+const VERIFIED_PSEUDOS = ["gauthier"];
 
 function verifiedBadge(pseudo) {
   if (!pseudo || !VERIFIED_PSEUDOS.includes(pseudo.toLowerCase())) return "";
@@ -26,7 +26,7 @@ function initMap() {
 
   const mapDiv = document.createElement("div");
   mapDiv.id = "map";
-  mapDiv.style.cssText = "position:absolute;top:0;left:0;right:0;bottom:0;";
+  mapDiv.style.cssText = "position:absolute;top:0;left:0;right:0;bottom:var(--nav-h);";
   mapContainer.appendChild(mapDiv);
 
   const btn = document.createElement("button");
