@@ -1,66 +1,92 @@
 // js/analytics.js
 import { db, auth } from "./firebase-config.js";
 import {
-  collection, query, where, getDocs
+  collection, query, where, getDocs, doc, getDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const page = document.getElementById("page-analytics");
 
 const CRITERIA_LABELS = {
-  prix_biere: "Prix Bière", prix_vin: "Prix Vin", gout_vin: "Goût Vin",
+  prix_biere: "Prix Biere", prix_vin: "Prix Vin", gout_vin: "Gout Vin",
   ambiance: "Ambiance", plage_hh: "Happy Hour", distance_maison: "Distance Maison",
-  distance_travail: "Distance Travail", beaute: "Beauté", variete_carte: "Variété Carte",
-  viabilite_saisonniere: "Viabilité Sais.", places: "Places", toilettes: "Toilettes"
+  distance_travail: "Distance Travail", beaute: "Beaute", variete_carte: "Variete Carte",
+  viabilite_saisonniere: "Viabilite Sais.", places: "Places", toilettes: "Toilettes"
 };
 
 window.addEventListener("user-ready", () => {
   renderAnalyticsPage();
 });
 
-let currentFilter = "all"; // all | friends | group
+let currentFilter = "all";
+let currentGroupId = null;
 let currentCriteria = "globalScore";
 
 function renderAnalyticsPage() {
   page.innerHTML = `
-    <div class="page-header">
+    <div style="padding:16px 20px 0;">
       <h2 class="page-title">ANALYTICS</h2>
     </div>
     <div class="analytics-body">
-      <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">
-        Découvrez les meilleurs bars notés par vos connexions.
-      </p>
-
       <div class="section-label" style="padding:0 0 8px;">Afficher les notes de</div>
       <div class="filter-bar" id="filter-who">
-        <button class="filter-chip active" data-who="all">🌍 Tous</button>
-        <button class="filter-chip" data-who="me">🙋 Moi</button>
-        <button class="filter-chip" data-who="friends">👥 Amis</button>
+        <button class="filter-chip active" data-who="all">Tous</button>
+        <button class="filter-chip" data-who="me">Moi</button>
+        <button class="filter-chip" data-who="friends">Amis</button>
+        <button class="filter-chip" data-who="group">Groupe...</button>
+      </div>
+
+      <!-- Group selector (hidden by default) -->
+      <div id="group-selector" style="display:none;margin-bottom:12px;">
+        <select id="group-select" class="input" style="padding:10px 14px;">
+          <option value="">Choisir un groupe...</option>
+        </select>
       </div>
 
       <div class="section-label" style="padding:8px 0;">Trier par</div>
-      <div class="filter-bar" id="filter-criteria" style="overflow-x:auto;flex-wrap:nowrap;">
-        <button class="filter-chip active" data-crit="globalScore">⭐ Score global</button>
+      <div class="filter-bar" id="filter-criteria" style="overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;">
+        <button class="filter-chip active" data-crit="globalScore">Score global</button>
         <button class="filter-chip" data-crit="ambiance">Ambiance</button>
-        <button class="filter-chip" data-crit="prix_biere">Prix Bière</button>
+        <button class="filter-chip" data-crit="prix_biere">Prix Biere</button>
         <button class="filter-chip" data-crit="plage_hh">Happy Hour</button>
-        <button class="filter-chip" data-crit="beaute">Beauté</button>
+        <button class="filter-chip" data-crit="beaute">Beaute</button>
+        <button class="filter-chip" data-crit="places">Places</button>
+        <button class="filter-chip" data-crit="toilettes">Toilettes</button>
       </div>
 
       <div class="section-label" style="padding:8px 0 10px;">Top bars</div>
       <div id="top-bars-list" class="top-bars-list">
-        <p style="color:var(--muted);font-size:13px;">Chargement…</p>
+        <p style="color:var(--muted);font-size:13px;">Chargement...</p>
       </div>
     </div>
   `;
 
   // Who filter
-  document.getElementById("filter-who").addEventListener("click", e => {
+  document.getElementById("filter-who").addEventListener("click", async e => {
     const btn = e.target.closest("[data-who]");
     if (!btn) return;
     document.querySelectorAll("#filter-who .filter-chip").forEach(c => c.classList.remove("active"));
     btn.classList.add("active");
     currentFilter = btn.dataset.who;
-    loadTopBars();
+    currentGroupId = null;
+
+    const groupSelector = document.getElementById("group-selector");
+    if (currentFilter === "group") {
+      groupSelector.style.display = "block";
+      await loadGroupOptions();
+    } else {
+      groupSelector.style.display = "none";
+      loadTopBars();
+    }
+  });
+
+  // Group select dropdown
+  document.getElementById("group-select").addEventListener("change", e => {
+    currentGroupId = e.target.value || null;
+    if (currentGroupId) loadTopBars();
+    else {
+      document.getElementById("top-bars-list").innerHTML =
+        `<p style="color:var(--muted);font-size:13px;">Selectionnez un groupe ci-dessus.</p>`;
+    }
   });
 
   // Criteria filter
@@ -70,44 +96,86 @@ function renderAnalyticsPage() {
     document.querySelectorAll("#filter-criteria .filter-chip").forEach(c => c.classList.remove("active"));
     btn.classList.add("active");
     currentCriteria = btn.dataset.crit;
-    loadTopBars();
+    if (currentFilter !== "group" || currentGroupId) loadTopBars();
   });
 
   loadTopBars();
 }
 
+// Load user's groups into the dropdown
+async function loadGroupOptions() {
+  const me = auth.currentUser;
+  const q  = query(collection(db, "conversations"),
+    where("members", "array-contains", me.uid),
+    where("isGroup", "==", true)
+  );
+  const snap = await getDocs(q);
+  const select = document.getElementById("group-select");
+  select.innerHTML = `<option value="">Choisir un groupe...</option>`;
+
+  if (snap.empty) {
+    select.innerHTML += `<option disabled>Aucun groupe pour l'instant</option>`;
+    document.getElementById("top-bars-list").innerHTML =
+      `<p style="color:var(--muted);font-size:13px;text-align:center;">Creez un groupe depuis l'onglet Social !</p>`;
+    return;
+  }
+
+  snap.forEach(d => {
+    const opt = document.createElement("option");
+    opt.value = d.id;
+    opt.textContent = d.data().name || "Groupe sans nom";
+    select.appendChild(opt);
+  });
+
+  document.getElementById("top-bars-list").innerHTML =
+    `<p style="color:var(--muted);font-size:13px;">Selectionnez un groupe ci-dessus.</p>`;
+}
+
 async function loadTopBars() {
   const listEl = document.getElementById("top-bars-list");
-  listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;">Chargement…</p>`;
+  listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;">Chargement...</p>`;
 
   const user = auth.currentUser;
-  let ratingsQuery;
+  let userIds = [];
 
   if (currentFilter === "me") {
-    ratingsQuery = query(collection(db, "ratings"), where("userId", "==", user.uid));
+    userIds = [user.uid];
+
   } else if (currentFilter === "friends") {
-    // Get friend list
-    const userSnap = await getDocs(query(collection(db, "users"), where("email", "==", user.email)));
-    const userData = userSnap.docs[0]?.data();
-    const friends  = userData?.friends || [];
+    const meSnap = await getDoc(doc(db, "users", user.uid));
+    const friends = meSnap.data()?.friends || [];
     if (!friends.length) {
       listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;text-align:center;">Vous n'avez pas encore d'amis dans Spahdigo.</p>`;
       return;
     }
-    ratingsQuery = query(collection(db, "ratings"), where("userId", "in", friends.slice(0, 10)));
+    userIds = [user.uid, ...friends].slice(0, 10);
+
+  } else if (currentFilter === "group") {
+    if (!currentGroupId) return;
+    const groupSnap = await getDoc(doc(db, "conversations", currentGroupId));
+    if (!groupSnap.exists()) return;
+    userIds = groupSnap.data().members || [];
+
   } else {
-    ratingsQuery = query(collection(db, "ratings"));
+    // all — no filter on userId
+    userIds = null;
   }
 
-  const snap = await getDocs(ratingsQuery);
+  // Fetch ratings
+  let snap;
+  if (userIds === null) {
+    snap = await getDocs(query(collection(db, "ratings")));
+  } else if (userIds.length === 1) {
+    snap = await getDocs(query(collection(db, "ratings"), where("userId", "==", userIds[0])));
+  } else {
+    snap = await getDocs(query(collection(db, "ratings"), where("userId", "in", userIds.slice(0, 10))));
+  }
 
   // Aggregate by bar
   const barMap = {};
   snap.forEach(d => {
     const r = d.data();
-    if (!barMap[r.barId]) {
-      barMap[r.barId] = { name: r.barName, scores: [], count: 0 };
-    }
+    if (!barMap[r.barId]) barMap[r.barId] = { name: r.barName, scores: [], count: 0 };
     const score = currentCriteria === "globalScore"
       ? r.globalScore
       : (r.scores?.[currentCriteria] ?? null);
@@ -117,27 +185,25 @@ async function loadTopBars() {
     }
   });
 
-  // Sort by average
   const sorted = Object.entries(barMap)
     .map(([id, b]) => ({
-      id,
-      name: b.name,
-      count: b.count,
-      avg: b.scores.length ? b.scores.reduce((a, v) => a + v, 0) / b.scores.length : 0
+      id, name: b.name, count: b.count,
+      avg: b.scores.reduce((a, v) => a + v, 0) / b.scores.length
     }))
     .filter(b => b.count > 0)
     .sort((a, b) => b.avg - a.avg)
     .slice(0, 10);
 
   if (!sorted.length) {
-    listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;text-align:center;">Aucune note trouvée.<br/>Soyez le premier à noter un bar !</p>`;
+    listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;text-align:center;">Aucune note trouvee.<br/>Soyez le premier a noter un bar !</p>`;
     return;
   }
 
+  const criteriaLabel = currentCriteria === "globalScore"
+    ? "Score global" : (CRITERIA_LABELS[currentCriteria] || currentCriteria);
+
   listEl.innerHTML = "";
   sorted.forEach((b, i) => {
-    const criteriaLabel = currentCriteria === "globalScore"
-      ? "Score global" : CRITERIA_LABELS[currentCriteria] || currentCriteria;
     const item = document.createElement("div");
     item.className = "bar-rank-item";
     item.innerHTML = `
