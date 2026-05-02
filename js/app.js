@@ -1,6 +1,6 @@
 // js/app.js
 
-// â”€â”€ Bottom navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Bottom navigation ──────────────────────────────────────────
 document.querySelectorAll(".nav-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     const target = btn.dataset.page;
@@ -15,7 +15,7 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
   });
 });
 
-// â”€â”€ Service Worker (PWA offline support) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Service Worker (PWA offline support) ──────────────────────
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").catch(() => {});
