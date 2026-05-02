@@ -7,10 +7,10 @@ import {
 const page = document.getElementById("page-analytics");
 
 const CRITERIA_LABELS = {
-  prix_biere: "Prix BiÃ¨re", prix_vin: "Prix Vin", gout_vin: "GoÃ»t Vin",
+  prix_biere: "Prix Bière", prix_vin: "Prix Vin", gout_vin: "Goût Vin",
   ambiance: "Ambiance", plage_hh: "Happy Hour", distance_maison: "Distance Maison",
-  distance_travail: "Distance Travail", beaute: "BeautÃ©", variete_carte: "VariÃ©tÃ© Carte",
-  viabilite_saisonniere: "ViabilitÃ© Sais.", places: "Places", toilettes: "Toilettes"
+  distance_travail: "Distance Travail", beaute: "Beauté", variete_carte: "Variété Carte",
+  viabilite_saisonniere: "Viabilité Sais.", places: "Places", toilettes: "Toilettes"
 };
 
 window.addEventListener("user-ready", () => {
@@ -27,28 +27,28 @@ function renderAnalyticsPage() {
     </div>
     <div class="analytics-body">
       <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">
-        DÃ©couvrez les meilleurs bars notÃ©s par vos connexions.
+        Découvrez les meilleurs bars notés par vos connexions.
       </p>
 
       <div class="section-label" style="padding:0 0 8px;">Afficher les notes de</div>
       <div class="filter-bar" id="filter-who">
-        <button class="filter-chip active" data-who="all">ðŸŒ Tous</button>
-        <button class="filter-chip" data-who="me">ðŸ™‹ Moi</button>
-        <button class="filter-chip" data-who="friends">ðŸ‘¥ Amis</button>
+        <button class="filter-chip active" data-who="all">🌍 Tous</button>
+        <button class="filter-chip" data-who="me">🙋 Moi</button>
+        <button class="filter-chip" data-who="friends">👥 Amis</button>
       </div>
 
       <div class="section-label" style="padding:8px 0;">Trier par</div>
       <div class="filter-bar" id="filter-criteria" style="overflow-x:auto;flex-wrap:nowrap;">
-        <button class="filter-chip active" data-crit="globalScore">â­ Score global</button>
+        <button class="filter-chip active" data-crit="globalScore">⭐ Score global</button>
         <button class="filter-chip" data-crit="ambiance">Ambiance</button>
-        <button class="filter-chip" data-crit="prix_biere">Prix BiÃ¨re</button>
+        <button class="filter-chip" data-crit="prix_biere">Prix Bière</button>
         <button class="filter-chip" data-crit="plage_hh">Happy Hour</button>
-        <button class="filter-chip" data-crit="beaute">BeautÃ©</button>
+        <button class="filter-chip" data-crit="beaute">Beauté</button>
       </div>
 
       <div class="section-label" style="padding:8px 0 10px;">Top bars</div>
       <div id="top-bars-list" class="top-bars-list">
-        <p style="color:var(--muted);font-size:13px;">Chargementâ€¦</p>
+        <p style="color:var(--muted);font-size:13px;">Chargement…</p>
       </div>
     </div>
   `;
@@ -78,7 +78,7 @@ function renderAnalyticsPage() {
 
 async function loadTopBars() {
   const listEl = document.getElementById("top-bars-list");
-  listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;">Chargementâ€¦</p>`;
+  listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;">Chargement…</p>`;
 
   const user = auth.currentUser;
   let ratingsQuery;
@@ -130,7 +130,7 @@ async function loadTopBars() {
     .slice(0, 10);
 
   if (!sorted.length) {
-    listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;text-align:center;">Aucune note trouvÃ©e.<br/>Soyez le premier Ã  noter un bar !</p>`;
+    listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;text-align:center;">Aucune note trouvée.<br/>Soyez le premier à noter un bar !</p>`;
     return;
   }
 
@@ -144,7 +144,7 @@ async function loadTopBars() {
       <div class="rank-num">#${i + 1}</div>
       <div class="bar-rank-info">
         <div class="bar-rank-name">${b.name}</div>
-        <div class="bar-rank-addr">${b.count} avis Â· ${criteriaLabel}</div>
+        <div class="bar-rank-addr">${b.count} avis · ${criteriaLabel}</div>
       </div>
       <div class="bar-rank-score">${b.avg.toFixed(1)}</div>
     `;
