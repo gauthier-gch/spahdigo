@@ -514,12 +514,17 @@ async function openEditProfile() {
 
     // Compress aggressively: max 120px, quality 0.6 → stays well under 50KB
     const base64 = await compressImage(file, 120, 0.6);
-    const sizeKB  = Math.round((base64.length * 3) / 4 / 1024);
+    const sizeKB  = Math.round(base64.length * 0.75 / 1024);
     newPhotoBase64 = base64;
 
     avatarEl.innerHTML = `<img src="${base64}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
-    statusEl.textContent = `Photo prete ! (~${sizeKB} Ko)`;
-    statusEl.style.color = "var(--gold)";
+    if (sizeKB > 500) {
+      statusEl.textContent = `Photo encore grande (${sizeKB} Ko) - peut poser probleme.`;
+      statusEl.style.color = "var(--danger)";
+    } else {
+      statusEl.textContent = `Photo prete ! (${sizeKB} Ko)`;
+      statusEl.style.color = "var(--gold)";
+    }
   });
 
   document.getElementById("close-profile").addEventListener("click", () => overlay.remove());
@@ -535,6 +540,13 @@ async function openEditProfile() {
     statusEl.textContent = "";
 
     try {
+      // Safety timeout — unblock button after 10s no matter what
+      const timeout = setTimeout(() => {
+        saveBtn.textContent = "Enregistrer";
+        saveBtn.disabled = false;
+        statusEl.textContent = "Délai dépassé, reessaie avec une photo plus petite.";
+        statusEl.style.color = "var(--danger)";
+      }, 10000);
       // Check pseudo uniqueness (only if changed)
       if (pseudo !== userData.pseudo) {
         const snap = await getDocs(query(collection(db, "users"), where("pseudo", "==", pseudo)));
@@ -556,9 +568,11 @@ async function openEditProfile() {
       if (newPhotoBase64) updates.photoURL = newPhotoBase64;
       await updateDoc(doc(db, "users", user.uid), updates);
 
+      clearTimeout(timeout);
       overlay.remove();
       renderSocialPage();
     } catch (e) {
+      clearTimeout(timeout);
       saveBtn.textContent = "Enregistrer";
       saveBtn.disabled = false;
       statusEl.textContent = "Erreur lors de la sauvegarde. Reessaie.";
@@ -575,6 +589,7 @@ function compressImage(file, maxSize, quality = 0.6) {
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
+        // Step 1: resize to maxSize
         const canvas = document.createElement("canvas");
         let w = img.width, h = img.height;
         if (w > h) { if (w > maxSize) { h = Math.round(h * maxSize / w); w = maxSize; } }
@@ -582,7 +597,27 @@ function compressImage(file, maxSize, quality = 0.6) {
         canvas.width  = w;
         canvas.height = h;
         canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", quality));
+
+        // Step 2: reduce quality until under 200KB
+        const MAX_BYTES = 200 * 1024;
+        let q = quality;
+        let result = canvas.toDataURL("image/jpeg", q);
+
+        while (result.length > MAX_BYTES && q > 0.1) {
+          q = Math.round((q - 0.1) * 10) / 10;
+          result = canvas.toDataURL("image/jpeg", q);
+        }
+
+        // Step 3: if still too big, shrink canvas further
+        if (result.length > MAX_BYTES) {
+          const canvas2 = document.createElement("canvas");
+          canvas2.width  = Math.round(w * 0.5);
+          canvas2.height = Math.round(h * 0.5);
+          canvas2.getContext("2d").drawImage(canvas, 0, 0, canvas2.width, canvas2.height);
+          result = canvas2.toDataURL("image/jpeg", 0.5);
+        }
+
+        resolve(result);
       };
       img.src = e.target.result;
     };
