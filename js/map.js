@@ -3,7 +3,7 @@ import { db } from "./firebase-config.js";
 import { collection, getDocs, query, where, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ── Verified badge (keep in sync with social.js) ───────────────
-const VERIFIED_PSEUDOS = ["gauthier"];
+const VERIFIED_PSEUDOS = ["gauthier", "gauthierslay"];
 
 function verifiedBadge(pseudo) {
   if (!pseudo || !VERIFIED_PSEUDOS.includes(pseudo.toLowerCase())) return "";
@@ -26,7 +26,7 @@ function initMap() {
 
   const mapDiv = document.createElement("div");
   mapDiv.id = "map";
-  mapDiv.style.cssText = "position:absolute;top:0;left:0;right:0;bottom:var(--nav-h);";
+  mapDiv.style.cssText = "position:absolute;top:0;left:0;right:0;bottom:68px;";
   mapContainer.appendChild(mapDiv);
 
   const btn = document.createElement("button");
@@ -40,6 +40,7 @@ function initMap() {
     zoom: 13,
     zoomControl: false
   });
+  window._leafletMap = leafletMap;
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     attribution: "© OpenStreetMap © CartoDB",
@@ -51,6 +52,10 @@ function initMap() {
     document.getElementById("modal-rate").classList.remove("hidden");
     window.dispatchEvent(new Event("open-rate-modal"));
   });
+
+  // Force Leaflet to recalculate size — critical for PWA mode on iPhone
+  setTimeout(() => leafletMap.invalidateSize(), 100);
+  setTimeout(() => leafletMap.invalidateSize(), 500);
 
   loadBarsOnMap();
 }
