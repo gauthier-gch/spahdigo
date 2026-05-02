@@ -17,12 +17,12 @@ function renderSocialPage() {
       <h2 class="page-title">SOCIAL</h2>
     </div>
     <div class="social-actions">
-      <button class="btn btn-secondary" id="btn-edit-profile">âœï¸ Mon profil</button>
-      <button class="btn btn-secondary" id="btn-add-friend">âž• Ajouter un ami</button>
+      <button class="btn btn-secondary" id="btn-edit-profile">✏️ Mon profil</button>
+      <button class="btn btn-secondary" id="btn-add-friend">➕ Ajouter un ami</button>
     </div>
     <div class="section-label">Conversations</div>
     <div class="conversations-list" id="convos-list">
-      <p style="color:var(--muted);padding:16px;font-size:13px;">Chargementâ€¦</p>
+      <p style="color:var(--muted);padding:16px;font-size:13px;">Chargement…</p>
     </div>
   `;
 
@@ -32,7 +32,7 @@ function renderSocialPage() {
   loadConversations();
 }
 
-// â”€â”€ Conversations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Conversations ──────────────────────────────────────────────
 async function loadConversations() {
   const user = auth.currentUser;
   if (!user) return;
@@ -60,7 +60,7 @@ async function loadConversations() {
     const item = document.createElement("div");
     item.className = "convo-item";
     item.innerHTML = `
-      <div class="avatar">${convo.isGroup ? "ðŸ‘¥" : "ðŸ§‘"}</div>
+      <div class="avatar">${convo.isGroup ? "👥" : "🧑"}</div>
       <div class="convo-info">
         <div class="convo-name">${name || "Conversation"}</div>
         <div class="convo-last">${convo.lastMessage || "Commencer la discussion"}</div>
@@ -72,19 +72,19 @@ async function loadConversations() {
   });
 }
 
-// â”€â”€ Chat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Chat ───────────────────────────────────────────────────────
 function openChat(convoId, title, convo) {
   const overlay = document.createElement("div");
   overlay.style.cssText = `position:fixed;inset:0;background:var(--dark2);z-index:2000;display:flex;flex-direction:column;`;
   overlay.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--dark);">
-      <button id="back-chat" style="background:var(--dark3);border:none;color:var(--text);width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer;">â†</button>
+      <button id="back-chat" style="background:var(--dark3);border:none;color:var(--text);width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer;">←</button>
       <span style="font-family:var(--font-display);font-size:24px;letter-spacing:1px;color:var(--gold);">${title}</span>
     </div>
     <div id="messages-area" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px;"></div>
     <div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border);padding-bottom:calc(12px + env(safe-area-inset-bottom));">
-      <input id="msg-input" class="input" placeholder="Messageâ€¦" style="flex:1;" />
-      <button id="send-msg" class="btn btn-primary" style="width:auto;padding:12px 18px;">â†’</button>
+      <input id="msg-input" class="input" placeholder="Message…" style="flex:1;" />
+      <button id="send-msg" class="btn btn-primary" style="width:auto;padding:12px 18px;">→</button>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -137,7 +137,7 @@ function openChat(convoId, title, convo) {
   });
 }
 
-// â”€â”€ Add friend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Add friend ─────────────────────────────────────────────────
 function openAddFriend() {
   const overlay = document.createElement("div");
   overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:2000;display:flex;align-items:center;justify-content:center;padding:24px;`;
@@ -168,7 +168,7 @@ function openAddFriend() {
     const friendData = friendDoc.data();
     result.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;padding:12px 0;">
-        <div class="avatar">ðŸ§‘</div>
+        <div class="avatar">🧑</div>
         <div style="flex:1;">
           <div style="font-weight:600;">${friendData.pseudo || friendData.name}</div>
           <div style="color:var(--muted);font-size:12px;">${friendData.email}</div>
@@ -209,7 +209,7 @@ function openAddFriend() {
   });
 }
 
-// â”€â”€ Edit profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Edit profile ───────────────────────────────────────────────
 function openEditProfile() {
   const user = auth.currentUser;
   const overlay = document.createElement("div");
@@ -234,7 +234,7 @@ function openEditProfile() {
   });
 }
 
-// â”€â”€ Utils â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Utils ──────────────────────────────────────────────────────
 function formatTime(ts) {
   if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
