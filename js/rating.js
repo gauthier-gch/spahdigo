@@ -4,7 +4,6 @@ import {
   collection, addDoc, getDocs, doc, updateDoc,
   increment, query, where, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { loadBarsOnMap, addBarMarker } from "./map.js";
 
 // ── Criteria with weights ──────────────────────────────────────
 const CRITERIA = [
@@ -112,27 +111,52 @@ document.getElementById("btn-save-new-bar").addEventListener("click", async () =
 });
 
 // ── Rating step ────────────────────────────────────────────────
-function openRateStep(bar) {
+async function openRateStep(bar) {
   selectedBar = bar;
   stepSearch.classList.add("hidden");
   stepCreate.classList.add("hidden");
   stepRate.classList.remove("hidden");
-  document.getElementById("rating-bar-name").textContent = bar.name;
-  buildCriteriaUI();
+
+  // Check if user already rated this bar
+  const user = auth.currentUser;
+  const existing = await getDocs(query(
+    collection(db, "ratings"),
+    where("barId", "==", bar.id),
+    where("userId", "==", user.uid)
+  ));
+
+  const submitBtn = document.getElementById("btn-submit-rating");
+  if (!existing.empty) {
+    // Pre-fill with existing scores
+    const prev = existing.docs[0].data();
+    document.getElementById("rating-bar-name").textContent = bar.name + " (modifier ma note)";
+    buildCriteriaUI(prev.scores);
+    document.getElementById("rating-comment").value = prev.comment || "";
+    submitBtn.textContent = "Mettre a jour ma note &#127866;";
+    submitBtn.dataset.existingId = existing.docs[0].id;
+    submitBtn.dataset.existingScore = prev.globalScore;
+  } else {
+    document.getElementById("rating-bar-name").textContent = bar.name;
+    buildCriteriaUI();
+    submitBtn.textContent = "Envoyer ma note &#127866;";
+    submitBtn.dataset.existingId = "";
+    submitBtn.dataset.existingScore = "";
+  }
 }
 
-function buildCriteriaUI() {
+function buildCriteriaUI(prevScores = {}) {
   criteriaList.innerHTML = "";
   CRITERIA.forEach(c => {
+    const val = prevScores[c.key] !== undefined ? prevScores[c.key] : 5;
     const div = document.createElement("div");
     div.className = "criterion-item";
     div.innerHTML = `
       <label>
         <span>${c.label}</span>
-        <span class="weight">×${c.weight}</span>
-        <span class="score-display" id="disp-${c.key}">5</span>
+        <span class="weight">x${c.weight}</span>
+        <span class="score-display" id="disp-${c.key}">${val}</span>
       </label>
-      <input type="range" min="0" max="10" step="0.5" value="5"
+      <input type="range" min="0" max="10" step="0.5" value="${val}"
              id="range-${c.key}" />
     `;
     criteriaList.appendChild(div);
@@ -148,6 +172,10 @@ document.getElementById("btn-submit-rating").addEventListener("click", async () 
   const user = auth.currentUser;
   if (!user) return;
 
+  const submitBtn = document.getElementById("btn-submit-rating");
+  const existingId    = submitBtn.dataset.existingId;
+  const existingScore = parseFloat(submitBtn.dataset.existingScore) || 0;
+
   const scores = {};
   let weightedSum = 0;
   CRITERIA.forEach(c => {
@@ -156,28 +184,37 @@ document.getElementById("btn-submit-rating").addEventListener("click", async () 
     weightedSum += val * c.weight;
   });
   const globalScore = weightedSum / TOTAL_WEIGHT;
-
   const comment = document.getElementById("rating-comment").value.trim();
 
-  await addDoc(collection(db, "ratings"), {
-    barId:   selectedBar.id,
-    barName: selectedBar.name,
-    userId:  user.uid,
-    userName: user.displayName || "Anonyme",
-    scores,
-    globalScore,
-    comment: comment || "",
-    createdAt: serverTimestamp()
-  });
-
-  // Update bar aggregate
-  await updateDoc(doc(db, "bars", selectedBar.id), {
-    ratingCount: increment(1),
-    totalScore:  increment(globalScore)
-  });
+  if (existingId) {
+    // Update existing rating
+    await updateDoc(doc(db, "ratings", existingId), {
+      scores, globalScore, comment, updatedAt: serverTimestamp()
+    });
+    // Fix bar aggregate: remove old score, add new
+    await updateDoc(doc(db, "bars", selectedBar.id), {
+      totalScore: increment(globalScore - existingScore)
+    });
+    alert(`Note mise a jour pour ${selectedBar.name} ! Score : ${globalScore.toFixed(1)}/10`);
+  } else {
+    // New rating
+    await addDoc(collection(db, "ratings"), {
+      barId: selectedBar.id,
+      barName: selectedBar.name,
+      userId: user.uid,
+      userName: user.displayName || "Anonyme",
+      scores, globalScore,
+      comment: comment || "",
+      createdAt: serverTimestamp()
+    });
+    await updateDoc(doc(db, "bars", selectedBar.id), {
+      ratingCount: increment(1),
+      totalScore:  increment(globalScore)
+    });
+    alert(`Note envoyee pour ${selectedBar.name} ! Score : ${globalScore.toFixed(1)}/10`);
+  }
 
   modal.classList.add("hidden");
   allBars = [];
   loadBarsOnMap();
-  alert(`Note envoyee pour ${selectedBar.name} ! Score : ${globalScore.toFixed(1)}/10 🍺`);
 });
