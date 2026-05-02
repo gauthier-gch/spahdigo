@@ -9,7 +9,7 @@ import {
 const page = document.getElementById("page-social");
 
 // ── Verified users (add pseudos here to grant badge) ──────────
-const VERIFIED_PSEUDOS = ["gauthier"];
+const VERIFIED_PSEUDOS = ["gauthier", "gauthierslay"];
 
 function verifiedBadge(pseudo) {
   if (!pseudo) return "";
@@ -91,6 +91,13 @@ function renderSocialPage() {
       <div id="search-results-social" style="margin-top:8px;"></div>
     </div>
 
+    <!-- Messages toolbar (visible on messages tab) -->
+    <div id="messages-toolbar" style="display:none;padding:12px 20px 0;">
+      <button id="btn-create-group" class="btn btn-secondary" style="font-size:13px;padding:10px;">
+        &#128101; Creer un groupe
+      </button>
+    </div>
+
     <!-- Tab content -->
     <div id="tab-friends"   class="social-tab-content" style="flex:1;overflow-y:auto;padding:12px 20px;"></div>
     <div id="tab-requests"  class="social-tab-content" style="display:none;flex:1;overflow-y:auto;padding:12px 20px;"></div>
@@ -112,9 +119,11 @@ function renderSocialPage() {
       document.querySelectorAll(".social-tab-content").forEach(c => c.style.display = "none");
       document.getElementById("tab-" + tab.dataset.tab).style.display = "block";
 
-      // Hide search bar on messages tab
+      // Hide/show toolbars
       document.getElementById("friend-search-bar").style.display =
-        tab.dataset.tab === "messages" ? "none" : "block";
+        tab.dataset.tab === "friends" ? "block" : "none";
+      document.getElementById("messages-toolbar").style.display =
+        tab.dataset.tab === "messages" ? "block" : "none";
 
       if (tab.dataset.tab === "requests") loadRequests();
       if (tab.dataset.tab === "messages") loadConversations();
@@ -126,6 +135,12 @@ function renderSocialPage() {
   document.getElementById("search-pseudo-input").addEventListener("keydown", e => {
     if (e.key === "Enter") searchByPseudo();
   });
+
+  // Wire up after a tick so the DOM is ready
+  setTimeout(() => {
+    const btnGroup = document.getElementById("btn-create-group");
+    if (btnGroup) btnGroup.addEventListener("click", openCreateGroup);
+  }, 0);
 
   loadFriends();
   loadPendingRequestsCount();
@@ -368,27 +383,34 @@ async function loadConversations() {
   container.innerHTML = "";
   for (const d of snap.docs) {
     const convo = d.data();
-    // Get other member's pseudo
-    const otherId = convo.members.find(uid => uid !== me.uid);
-    let otherPseudo = "Conversation";
-    let otherPhoto  = "";
-    if (otherId) {
-      const otherSnap = await getDoc(doc(db, "users", otherId));
-      if (otherSnap.exists()) {
-        otherPseudo = "@" + (otherSnap.data().pseudo || otherId);
-        otherPhoto  = otherSnap.data().photoURL || "";
+
+    let displayName, photoHTML;
+    if (convo.isGroup) {
+      displayName = convo.name || "Groupe";
+      photoHTML = `<span style="font-size:20px;">&#128101;</span>`;
+    } else {
+      const otherId = convo.members.find(uid => uid !== me.uid);
+      let otherPseudo = "Conversation";
+      let otherPhoto  = "";
+      if (otherId) {
+        const otherSnap = await getDoc(doc(db, "users", otherId));
+        if (otherSnap.exists()) {
+          otherPseudo = "@" + (otherSnap.data().pseudo || otherId);
+          otherPhoto  = otherSnap.data().photoURL || "";
+        }
       }
+      displayName = otherPseudo;
+      photoHTML = otherPhoto
+        ? `<img src="${otherPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+        : "&#129489;";
     }
-    const photoHTML = otherPhoto
-      ? `<img src="${otherPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-      : "&#129489;";
 
     const item = document.createElement("div");
     item.style.cssText = "display:flex;align-items:center;gap:14px;padding:12px;border-radius:var(--radius);cursor:pointer;transition:background .15s;margin-bottom:4px;";
     item.innerHTML = `
       <div class="avatar" style="width:46px;height:46px;font-size:18px;overflow:hidden;">${photoHTML}</div>
       <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;font-size:14px;display:flex;align-items:center;">${otherPseudo}${verifiedBadge(otherPseudo.replace("@",""))}</div>
+        <div style="font-weight:600;font-size:14px;display:flex;align-items:center;">${displayName}${convo.isGroup ? "" : verifiedBadge(displayName.replace("@",""))}</div>
         <div style="color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           ${convo.lastMessage || "Commencer la discussion..."}
         </div>
@@ -396,7 +418,7 @@ async function loadConversations() {
     `;
     item.addEventListener("mouseenter", () => item.style.background = "var(--dark3)");
     item.addEventListener("mouseleave", () => item.style.background = "transparent");
-    item.addEventListener("click", () => openChat(d.id, otherPseudo));
+    item.addEventListener("click", () => openChat(d.id, displayName));
     container.appendChild(item);
   }
 }
@@ -474,6 +496,83 @@ function openChat(convoId, title) {
   document.getElementById("send-msg").addEventListener("click", sendMessage);
   document.getElementById("msg-input").addEventListener("keydown", e => {
     if (e.key === "Enter") sendMessage();
+  });
+}
+
+// ── Create group ───────────────────────────────────────────────
+async function openCreateGroup() {
+  const me = auth.currentUser;
+  const meSnap = await getDoc(doc(db, "users", me.uid));
+  const friendIds = meSnap.data()?.friends || [];
+
+  if (friendIds.length === 0) {
+    alert("Ajoutez des amis avant de creer un groupe !");
+    return;
+  }
+
+  // Load friend data
+  const friends = [];
+  for (const fid of friendIds) {
+    const s = await getDoc(doc(db, "users", fid));
+    if (s.exists()) friends.push({ uid: fid, ...s.data() });
+  }
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:24px;";
+
+  const friendOptions = friends.map(f => `
+    <label style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;cursor:pointer;transition:background .15s;"
+           onmouseenter="this.style.background='var(--dark3)'" onmouseleave="this.style.background='transparent'">
+      <input type="checkbox" value="${f.uid}" style="width:18px;height:18px;accent-color:var(--gold);cursor:pointer;" />
+      <span style="font-size:14px;font-weight:500;">@${f.pseudo}</span>
+    </label>
+  `).join("");
+
+  overlay.innerHTML = `
+    <div style="background:var(--dark2);border-radius:24px;padding:24px;width:100%;max-width:360px;border:1px solid var(--border);max-height:80vh;overflow-y:auto;">
+      <h3 style="font-family:var(--font-display);font-size:26px;color:var(--gold);margin-bottom:16px;letter-spacing:2px;">NOUVEAU GROUPE</h3>
+      <input id="group-name-input" class="input" placeholder="Nom du groupe (ex: Barathon)" style="margin-bottom:16px;" />
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">Ajouter des amis</p>
+      <div id="friend-checkboxes" style="margin-bottom:16px;">${friendOptions}</div>
+      <button id="btn-confirm-group" class="btn btn-primary" style="margin-bottom:8px;">Creer le groupe</button>
+      <button id="btn-cancel-group" class="btn btn-ghost">Annuler</button>
+      <p id="group-error" style="color:var(--danger);font-size:13px;margin-top:8px;text-align:center;"></p>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  document.getElementById("btn-cancel-group").addEventListener("click", () => overlay.remove());
+
+  document.getElementById("btn-confirm-group").addEventListener("click", async () => {
+    const groupName = document.getElementById("group-name-input").value.trim();
+    const errEl = document.getElementById("group-error");
+    const checked = [...overlay.querySelectorAll("input[type=checkbox]:checked")].map(c => c.value);
+
+    if (!groupName) { errEl.textContent = "Donne un nom au groupe."; return; }
+    if (checked.length < 1) { errEl.textContent = "Selectionne au moins un ami."; return; }
+
+    const members = [me.uid, ...checked];
+    await addDoc(collection(db, "conversations"), {
+      name: groupName,
+      members,
+      isGroup: true,
+      lastMessage: "",
+      updatedAt: serverTimestamp()
+    });
+
+    overlay.remove();
+    // Switch to messages tab and refresh
+    document.querySelectorAll(".social-tab").forEach(t => {
+      const isMsg = t.dataset.tab === "messages";
+      t.style.borderBottomColor = isMsg ? "var(--gold)" : "var(--border)";
+      t.style.color = isMsg ? "var(--gold)" : "var(--muted)";
+      if (isMsg) t.classList.add("active"); else t.classList.remove("active");
+    });
+    document.querySelectorAll(".social-tab-content").forEach(c => c.style.display = "none");
+    document.getElementById("tab-messages").style.display = "block";
+    document.getElementById("friend-search-bar").style.display = "none";
+    document.getElementById("messages-toolbar").style.display = "block";
+    loadConversations();
   });
 }
 
