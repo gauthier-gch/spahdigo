@@ -9,7 +9,7 @@ import {
 const page = document.getElementById("page-social");
 
 // ── Verified users (add pseudos here to grant badge) ──────────
-const VERIFIED_PSEUDOS = ["gauthier", "gauthierslay"];
+const VERIFIED_PSEUDOS = ["gauthier"];
 
 function verifiedBadge(pseudo) {
   if (!pseudo) return "";
