@@ -7,6 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Spahdigo" />
   <link rel="apple-touch-startup-image" href="https://gauthier-gch.github.io/spahdigo/" />
+  <link rel="apple-touch-icon" href="icons/logo_spahdigo.png" />
   <base href="/spahdigo/" />
   <link rel="manifest" href="manifest.json" />
   <title>Spahdigo</title>
@@ -22,7 +23,7 @@
     <div class="auth-bg"></div>
     <div class="auth-container">
       <div class="logo-wrap">
-        <h1 class="logo">SPAHDIGO</h1>
+        <img src="icons/logo_spahdigo.png" alt="Spahdigo" class="logo-img" />
         <p class="tagline">Le bar parfait : vacaciones 🍻</p>
       </div>
 
@@ -53,6 +54,12 @@
 
   <!-- MAIN APP -->
   <div id="app-screen" class="screen">
+
+    <!-- Top bar with logo -->
+    <div class="app-topbar">
+      <img src="icons/logo_spahdigo.png" alt="Spahdigo" class="topbar-logo" />
+    </div>
+
     <div id="page-map"       class="page active"></div>
     <div id="page-social"    class="page"></div>
     <div id="page-analytics" class="page"></div>
