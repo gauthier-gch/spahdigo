@@ -36,14 +36,16 @@ document.getElementById("btn-login").addEventListener("click", async () => {
 // Register
 document.getElementById("btn-register").addEventListener("click", async () => {
   const pseudo   = document.getElementById("reg-pseudo").value.trim();
-  const name     = document.getElementById("reg-name").value.trim();
+  const firstname = document.getElementById("reg-firstname").value.trim();
+  const lastname  = document.getElementById("reg-lastname").value.trim();
+  const name      = firstname + " " + lastname;
   const email    = document.getElementById("reg-email").value.trim();
   const phone    = document.getElementById("reg-phone").value.trim();
   const password = document.getElementById("reg-password").value;
   const errEl    = document.getElementById("auth-error");
   errEl.textContent = "";
 
-  if (!pseudo || !name || !email || !phone || !password) {
+  if (!pseudo || !firstname || !lastname || !email || !phone || !password) {
     errEl.textContent = "Veuillez remplir tous les champs.";
     return;
   }
@@ -56,7 +58,7 @@ document.getElementById("btn-register").addEventListener("click", async () => {
     // Store pseudo as displayName so it shows everywhere in the app
     await updateProfile(cred.user, { displayName: pseudo });
     await setDoc(doc(db, "users", cred.user.uid), {
-      pseudo, name, email, phone,
+      pseudo, firstname, lastname, name, email, phone,
       createdAt: serverTimestamp(),
       friends: []
     });
