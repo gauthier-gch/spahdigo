@@ -157,7 +157,6 @@ async function loadTopBars() {
     userIds = groupSnap.data().members || [];
 
   } else {
-    // all — no filter on userId
     userIds = null;
   }
 
@@ -171,31 +170,47 @@ async function loadTopBars() {
     snap = await getDocs(query(collection(db, "ratings"), where("userId", "in", userIds.slice(0, 10))));
   }
 
-  // Aggregate by bar
+  // Aggregate by bar — track which users rated each bar
   const barMap = {};
   snap.forEach(d => {
     const r = d.data();
-    if (!barMap[r.barId]) barMap[r.barId] = { name: r.barName, scores: [], count: 0 };
+    if (!barMap[r.barId]) barMap[r.barId] = { name: r.barName, scores: [], raters: new Set() };
     const score = currentCriteria === "globalScore"
       ? r.globalScore
       : (r.scores?.[currentCriteria] ?? null);
     if (score !== null && score !== undefined) {
       barMap[r.barId].scores.push(score);
-      barMap[r.barId].count++;
+      barMap[r.barId].raters.add(r.userId);
     }
   });
 
+  // For group filter: only keep bars rated by ALL members
+  const requiredRaters = currentFilter === "group" && userIds
+    ? new Set(userIds)
+    : null;
+
   const sorted = Object.entries(barMap)
+    .filter(([, b]) => {
+      if (!requiredRaters) return b.scores.length > 0;
+      // Every group member must have rated this bar
+      for (const uid of requiredRaters) {
+        if (!b.raters.has(uid)) return false;
+      }
+      return true;
+    })
     .map(([id, b]) => ({
-      id, name: b.name, count: b.count,
+      id,
+      name: b.name,
+      count: b.raters.size,
       avg: b.scores.reduce((a, v) => a + v, 0) / b.scores.length
     }))
-    .filter(b => b.count > 0)
     .sort((a, b) => b.avg - a.avg)
-    .slice(0, 10);
+    .slice(0, 100); // top 100
 
   if (!sorted.length) {
-    listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;text-align:center;">Aucune note trouvee.<br/>Soyez le premier a noter un bar !</p>`;
+    listEl.innerHTML = currentFilter === "group"
+      ? `<p style="color:var(--muted);font-size:13px;text-align:center;">Aucun bar n'a ete note par tous les membres du groupe.</p>`
+      : `<p style="color:var(--muted);font-size:13px;text-align:center;">Aucune note trouvee.</p>`;
     return;
   }
 
@@ -204,15 +219,18 @@ async function loadTopBars() {
 
   listEl.innerHTML = "";
   sorted.forEach((b, i) => {
+    const isTop10 = i < 10;
     const item = document.createElement("div");
     item.className = "bar-rank-item";
+    item.style.opacity = isTop10 ? "1" : "0.55";
+    item.style.borderColor = isTop10 ? "var(--border)" : "rgba(46,46,46,0.5)";
     item.innerHTML = `
-      <div class="rank-num">#${i + 1}</div>
+      <div class="rank-num" style="color:${isTop10 ? "var(--gold)" : "var(--muted)"};">#${i + 1}</div>
       <div class="bar-rank-info">
-        <div class="bar-rank-name">${b.name}</div>
+        <div class="bar-rank-name" style="color:${isTop10 ? "var(--text)" : "var(--muted)"};">${b.name}</div>
         <div class="bar-rank-addr">${b.count} avis · ${criteriaLabel}</div>
       </div>
-      <div class="bar-rank-score">${b.avg.toFixed(1)}</div>
+      <div class="bar-rank-score" style="color:${isTop10 ? "var(--gold)" : "var(--muted)"};">${b.avg.toFixed(1)}</div>
     `;
     listEl.appendChild(item);
   });
