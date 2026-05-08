@@ -49,11 +49,11 @@ document.getElementById("btn-forgot-password").addEventListener("click", async (
   }
   try {
     await sendPasswordResetEmail(auth, email);
-    errEl.textContent = "Email envoye ! Verifie tes spams !";
+    errEl.textContent = "Email envoye ! Verifie ta boite mail... et tes spams !";
     errEl.style.color = "var(--gold)";
   } catch (e) {
     if (e.code === "auth/user-not-found") {
-      errEl.textContent = "Aucun compte trouvé avec cet email. Tu peux t'inscrire !";
+      errEl.textContent = "Aucun compte trouve avec cet email. Tu peux t'inscrire !";
     } else {
       errEl.textContent = "Email invalide ou erreur. Verifie et reessaie.";
     }
@@ -91,7 +91,7 @@ document.getElementById("btn-register").addEventListener("click", async () => {
       photoURL: "", createdAt: serverTimestamp(), friends: []
     });
   } catch (e) {
-    if (e.code === "auth/email-already-in-use") errEl.textContent = "Cet email est deja utilisé.";
+    if (e.code === "auth/email-already-in-use") errEl.textContent = "Cet email est deja utilise.";
     else if (e.code === "auth/weak-password") errEl.textContent = "Mot de passe trop court (6 min).";
     else errEl.textContent = "Erreur lors de l inscription.";
   }
@@ -102,6 +102,10 @@ onAuthStateChanged(auth, user => {
     document.getElementById("auth-screen").classList.remove("active");
     document.getElementById("app-screen").classList.add("active");
     window.dispatchEvent(new CustomEvent("user-ready", { detail: user }));
+    // Request notification permission for app badge (iOS needs this)
+    if ("Notification" in window && Notification.permission === "default") {
+      setTimeout(() => Notification.requestPermission(), 1500);
+    }
   } else {
     document.getElementById("auth-screen").classList.add("active");
     document.getElementById("app-screen").classList.remove("active");
