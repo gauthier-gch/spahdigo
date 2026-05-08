@@ -11,7 +11,7 @@ function verifiedBadge(pseudo) {
 let mapInitialized = false;
 let leafletMap;
 let allMarkers = []; // { id, bar, marker }
-let currentMapFilter = "all"; // all | me | friends | friend:<uid> | group:<id>
+let currentMapFilter = "all";
 
 window.addEventListener("user-ready", () => { initMap(); });
 
@@ -20,25 +20,24 @@ function initMap() {
   mapInitialized = true;
   const mapContainer = document.getElementById("page-map");
 
-  // Filter bar UI
   const filterBar = document.createElement("div");
   filterBar.id = "map-filter-bar";
   filterBar.style.cssText = "position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:500;display:flex;gap:6px;background:rgba(13,13,13,0.85);padding:6px 10px;border-radius:50px;border:1px solid var(--border);backdrop-filter:blur(8px);white-space:nowrap;max-width:92vw;overflow-x:auto;";
   filterBar.innerHTML = `
-    <button class="map-filter-btn active" data-f="all" style="background:var(--gold);color:var(--dark);border:none;padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);font-weight:600;cursor:pointer;white-space:nowrap;">Tous</button>
-    <button class="map-filter-btn" data-f="me" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Moi</button>
-    <button class="map-filter-btn" data-f="friends" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Mes amis</button>
-    <button class="map-filter-btn" data-f="friend-select" id="map-btn-friend" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Un ami...</button>
-    <button class="map-filter-btn" data-f="group-select" id="map-btn-group" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Groupe...</button>
+    <button class="map-filter-btn active" data-f="all"           style="background:var(--gold);color:var(--dark);border:none;padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);font-weight:600;cursor:pointer;white-space:nowrap;">Tous</button>
+    <button class="map-filter-btn"        data-f="me"            style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Moi</button>
+    <button class="map-filter-btn"        data-f="friends"       style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Mes amis</button>
+    <button class="map-filter-btn"        data-f="friend-select" id="map-btn-friend" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Un ami...</button>
+    <button class="map-filter-btn"        data-f="group-select"  id="map-btn-group"  style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Groupe...</button>
   `;
   mapContainer.appendChild(filterBar);
 
+  // FIX: use a dedicated flag instead of startsWith on data-f
   filterBar.addEventListener("click", async e => {
     const btn = e.target.closest("[data-f]"); if (!btn) return;
     const f = btn.dataset.f;
-    // Always reopen selector if it's a friend or group button (even after a selection)
-    if (f === "friend-select" || f.startsWith("friend:")) { await openFriendSelector(); return; }
-    if (f === "group-select"  || f.startsWith("group:"))  { await openGroupSelector();  return; }
+    if (f === "friend-select") { await openFriendSelector(); return; }
+    if (f === "group-select")  { await openGroupSelector();  return; }
     setMapFilter(f, btn);
   });
 
@@ -66,79 +65,126 @@ function setMapFilter(f, activeBtn) {
   document.querySelectorAll(".map-filter-btn").forEach(b => {
     b.style.background="transparent"; b.style.color="var(--muted)"; b.style.borderColor="var(--border)"; b.classList.remove("active");
   });
-  if (activeBtn) { activeBtn.style.background="var(--gold)"; activeBtn.style.color="var(--dark)"; activeBtn.style.borderColor="var(--gold)"; activeBtn.classList.add("active"); }
+  if (activeBtn) {
+    activeBtn.style.background="var(--gold)"; activeBtn.style.color="var(--dark)";
+    activeBtn.style.borderColor="var(--gold)"; activeBtn.classList.add("active");
+  }
   applyMapFilter();
 }
 
 async function applyMapFilter() {
   const me = auth.currentUser;
-  let allowedBarIds = null; // null = show all
+  let allowedBarIds = null;
 
   if (currentMapFilter === "me") {
     const snap = await getDocs(query(collection(db,"ratings"), where("userId","==",me.uid)));
     allowedBarIds = new Set(snap.docs.map(d=>d.data().barId));
+
   } else if (currentMapFilter === "friends") {
     const meSnap = await getDoc(doc(db,"users",me.uid));
-    const friends = meSnap.data()?.friends||[];
+    const friends = meSnap.data()?.friends || [];
     const uids = [me.uid, ...friends];
-    const snap = await getDocs(query(collection(db,"ratings"), where("userId","in",uids.slice(0,10))));
-    allowedBarIds = new Set(snap.docs.map(d=>d.data().barId));
+    // Firestore "in" limit is 10 — batch if needed
+    let barIds = new Set();
+    for (let i = 0; i < uids.length; i += 10) {
+      const batch = uids.slice(i, i + 10);
+      const snap = await getDocs(query(collection(db,"ratings"), where("userId","in",batch)));
+      snap.docs.forEach(d => barIds.add(d.data().barId));
+    }
+    allowedBarIds = barIds;
+
   } else if (currentMapFilter.startsWith("friend:")) {
     const fuid = currentMapFilter.split(":")[1];
     const snap = await getDocs(query(collection(db,"ratings"), where("userId","==",fuid)));
     allowedBarIds = new Set(snap.docs.map(d=>d.data().barId));
+
   } else if (currentMapFilter.startsWith("group:")) {
     const gid = currentMapFilter.split(":")[1];
     const gSnap = await getDoc(doc(db,"conversations",gid));
-    const members = gSnap.data()?.members||[];
-    const snap = await getDocs(query(collection(db,"ratings"), where("userId","in",members.slice(0,10))));
-    // Only bars rated by ALL members
+    const members = gSnap.data()?.members || [];
     const barRaters = {};
-    snap.docs.forEach(d => { const r=d.data(); if(!barRaters[r.barId])barRaters[r.barId]=new Set(); barRaters[r.barId].add(r.userId); });
-    allowedBarIds = new Set(Object.entries(barRaters).filter(([,s])=>members.every(m=>s.has(m))).map(([id])=>id));
+    for (let i = 0; i < members.length; i += 10) {
+      const batch = members.slice(i, i + 10);
+      const snap = await getDocs(query(collection(db,"ratings"), where("userId","in",batch)));
+      snap.docs.forEach(d => {
+        const r = d.data();
+        if (!barRaters[r.barId]) barRaters[r.barId] = new Set();
+        barRaters[r.barId].add(r.userId);
+      });
+    }
+    allowedBarIds = new Set(
+      Object.entries(barRaters)
+        .filter(([,s]) => members.every(m => s.has(m)))
+        .map(([id]) => id)
+    );
   }
 
-  // Show/hide markers
   allMarkers.forEach(({ id, marker }) => {
     const visible = allowedBarIds === null || allowedBarIds.has(id);
     if (visible) { if (!leafletMap.hasLayer(marker)) marker.addTo(leafletMap); }
-    else { if (leafletMap.hasLayer(marker)) leafletMap.removeLayer(marker); }
+    else         { if (leafletMap.hasLayer(marker))  leafletMap.removeLayer(marker); }
   });
 }
 
 async function openFriendSelector() {
   const me = auth.currentUser;
   const meSnap = await getDoc(doc(db,"users",me.uid));
-  const friendIds = meSnap.data()?.friends||[];
+  const friendIds = meSnap.data()?.friends || [];
   if (!friendIds.length) { alert("Vous n'avez pas encore d'amis !"); return; }
-  const friends=[];
-  for(const fid of friendIds){const s=await getDoc(doc(db,"users",fid));if(s.exists())friends.push({uid:fid,...s.data()});}
+
+  const friends = [];
+  for (const fid of friendIds) {
+    const s = await getDoc(doc(db,"users",fid));
+    if (s.exists()) friends.push({ uid:fid, ...s.data() });
+  }
 
   const overlay = document.createElement("div");
-  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:3000;display:flex;align-items:center;justify-content:center;padding:24px;";
-  overlay.innerHTML=`<div style="background:var(--dark2);border-radius:20px;padding:20px;width:100%;max-width:320px;border:1px solid var(--border);">
-    <h3 style="font-family:var(--font-display);font-size:22px;color:var(--gold);margin-bottom:14px;">Choisir un ami</h3>
-    <div id="friend-list-select" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
-    <button id="close-friend-sel" class="btn btn-ghost" style="margin-top:12px;">Annuler</button>
-  </div>`;
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:3000;display:flex;align-items:center;justify-content:center;padding:24px;";
+  overlay.innerHTML = `
+    <div style="background:var(--dark2);border-radius:20px;padding:20px;width:100%;max-width:320px;border:1px solid var(--border);">
+      <h3 style="font-family:var(--font-display);font-size:22px;color:var(--gold);margin-bottom:14px;">Choisir un ami</h3>
+      <div id="friend-list-select" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
+      <button id="close-friend-sel" class="btn btn-ghost" style="margin-top:12px;">Annuler</button>
+    </div>
+  `;
   document.body.appendChild(overlay);
-  document.getElementById("close-friend-sel").addEventListener("click",()=>overlay.remove());
-  const list=document.getElementById("friend-list-select");
-  friends.forEach(f=>{
-    const btn=document.createElement("button");
-    btn.style.cssText="display:flex;align-items:center;gap:10px;padding:10px;background:var(--dark3);border:1px solid var(--border);border-radius:10px;cursor:pointer;color:var(--text);font-family:var(--font-body);font-size:14px;width:100%;";
-    const photo=f.photoURL?`<img src="${f.photoURL}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;"/>`:`<span style="width:32px;height:32px;border-radius:50%;background:var(--dark);display:flex;align-items:center;justify-content:center;">&#129489;</span>`;
-    btn.innerHTML=`${photo}<span>@${f.pseudo}</span>`;
-    btn.addEventListener("click",()=>{
-      currentMapFilter=`friend:${f.uid}`;
-      document.querySelectorAll(".map-filter-btn").forEach(b=>{b.style.background="transparent";b.style.color="var(--muted)";b.style.borderColor="var(--border)";});
-      // Use getElementById to reliably find the button, not querySelector on data-f which may be stale
+
+  // FIX: stopPropagation so the click doesn't bubble to filterBar and reopen selector
+  document.getElementById("close-friend-sel").addEventListener("click", e => {
+    e.stopPropagation();
+    overlay.remove();
+  });
+
+  // Also close on background click
+  overlay.addEventListener("click", e => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  const list = document.getElementById("friend-list-select");
+  friends.forEach(f => {
+    const btn = document.createElement("button");
+    btn.style.cssText = "display:flex;align-items:center;gap:10px;padding:10px;background:var(--dark3);border:1px solid var(--border);border-radius:10px;cursor:pointer;color:var(--text);font-family:var(--font-body);font-size:14px;width:100%;";
+    const photo = f.photoURL
+      ? `<img src="${f.photoURL}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;" />`
+      : `<span style="width:32px;height:32px;border-radius:50%;background:var(--dark);display:flex;align-items:center;justify-content:center;">&#129489;</span>`;
+    btn.innerHTML = `${photo}<span>@${f.pseudo}</span>`;
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      currentMapFilter = `friend:${f.uid}`;
+      // Reset all buttons
+      document.querySelectorAll(".map-filter-btn").forEach(b => {
+        b.style.background="transparent"; b.style.color="var(--muted)"; b.style.borderColor="var(--border)"; b.classList.remove("active");
+      });
+      // FIX: update label with textContent (safe — attributes are on the element, not innerHTML)
       const selBtn = document.getElementById("map-btn-friend");
-      if(selBtn){
-        selBtn.style.background="var(--gold)";selBtn.style.color="var(--dark)";selBtn.style.borderColor="var(--gold)";
-        selBtn.innerHTML=`@${f.pseudo}`; // innerHTML not textContent to preserve attributes
+      if (selBtn) {
+        selBtn.textContent = `@${f.pseudo}`;
+        // Keep data-f as "friend-select" so the click handler still opens selector on re-click
+        selBtn.dataset.f = "friend-select";
+        selBtn.style.background="var(--gold)"; selBtn.style.color="var(--dark)"; selBtn.style.borderColor="var(--gold)";
       }
-      overlay.remove(); applyMapFilter();
+      overlay.remove();
+      applyMapFilter();
     });
     list.appendChild(btn);
   });
@@ -146,33 +192,49 @@ async function openFriendSelector() {
 
 async function openGroupSelector() {
   const me = auth.currentUser;
-  const snap = await getDocs(query(collection(db,"conversations"),where("members","array-contains",me.uid),where("isGroup","==",true)));
+  const snap = await getDocs(query(collection(db,"conversations"), where("members","array-contains",me.uid), where("isGroup","==",true)));
   if (snap.empty) { alert("Vous n'avez pas encore de groupes !"); return; }
 
-  const overlay=document.createElement("div");
-  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:3000;display:flex;align-items:center;justify-content:center;padding:24px;";
-  overlay.innerHTML=`<div style="background:var(--dark2);border-radius:20px;padding:20px;width:100%;max-width:320px;border:1px solid var(--border);">
-    <h3 style="font-family:var(--font-display);font-size:22px;color:var(--gold);margin-bottom:14px;">Choisir un groupe</h3>
-    <div id="group-list-select" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
-    <button id="close-group-sel" class="btn btn-ghost" style="margin-top:12px;">Annuler</button>
-  </div>`;
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:3000;display:flex;align-items:center;justify-content:center;padding:24px;";
+  overlay.innerHTML = `
+    <div style="background:var(--dark2);border-radius:20px;padding:20px;width:100%;max-width:320px;border:1px solid var(--border);">
+      <h3 style="font-family:var(--font-display);font-size:22px;color:var(--gold);margin-bottom:14px;">Choisir un groupe</h3>
+      <div id="group-list-select" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
+      <button id="close-group-sel" class="btn btn-ghost" style="margin-top:12px;">Annuler</button>
+    </div>
+  `;
   document.body.appendChild(overlay);
-  document.getElementById("close-group-sel").addEventListener("click",()=>overlay.remove());
-  const list=document.getElementById("group-list-select");
-  snap.forEach(d=>{
-    const g=d.data();
-    const btn=document.createElement("button");
-    btn.style.cssText="display:flex;align-items:center;gap:10px;padding:10px;background:var(--dark3);border:1px solid var(--border);border-radius:10px;cursor:pointer;color:var(--text);font-family:var(--font-body);font-size:14px;width:100%;";
-    btn.innerHTML=`<span style="font-size:18px;">&#128101;</span><span>${g.name||"Groupe"}</span>`;
-    btn.addEventListener("click",()=>{
-      currentMapFilter=`group:${d.id}`;
-      document.querySelectorAll(".map-filter-btn").forEach(b=>{b.style.background="transparent";b.style.color="var(--muted)";b.style.borderColor="var(--border)";});
+
+  // FIX: stopPropagation + background click
+  document.getElementById("close-group-sel").addEventListener("click", e => {
+    e.stopPropagation();
+    overlay.remove();
+  });
+  overlay.addEventListener("click", e => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  const list = document.getElementById("group-list-select");
+  snap.forEach(d => {
+    const g = d.data();
+    const btn = document.createElement("button");
+    btn.style.cssText = "display:flex;align-items:center;gap:10px;padding:10px;background:var(--dark3);border:1px solid var(--border);border-radius:10px;cursor:pointer;color:var(--text);font-family:var(--font-body);font-size:14px;width:100%;";
+    btn.innerHTML = `<span style="font-size:18px;">&#128101;</span><span>${g.name || "Groupe"}</span>`;
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      currentMapFilter = `group:${d.id}`;
+      document.querySelectorAll(".map-filter-btn").forEach(b => {
+        b.style.background="transparent"; b.style.color="var(--muted)"; b.style.borderColor="var(--border)"; b.classList.remove("active");
+      });
       const selBtn = document.getElementById("map-btn-group");
-      if(selBtn){
-        selBtn.style.background="var(--gold)";selBtn.style.color="var(--dark)";selBtn.style.borderColor="var(--gold)";
-        selBtn.innerHTML=g.name||"Groupe";
+      if (selBtn) {
+        selBtn.textContent = g.name || "Groupe";
+        selBtn.dataset.f = "group-select"; // Keep as "group-select" for re-click
+        selBtn.style.background="var(--gold)"; selBtn.style.color="var(--dark)"; selBtn.style.borderColor="var(--gold)";
       }
-      overlay.remove(); applyMapFilter();
+      overlay.remove();
+      applyMapFilter();
     });
     list.appendChild(btn);
   });
@@ -180,36 +242,41 @@ async function openGroupSelector() {
 
 export async function loadBarsOnMap() {
   if (!leafletMap) return;
+  // FIX: remove existing markers from map before resetting array
+  allMarkers.forEach(({ marker }) => { if (leafletMap.hasLayer(marker)) leafletMap.removeLayer(marker); });
   allMarkers = [];
   const snap = await getDocs(collection(db,"bars"));
-  snap.forEach(docSnap => { const bar=docSnap.data(); if(bar.lat&&bar.lng) addBarMarker(docSnap.id,bar); });
+  snap.forEach(docSnap => { const bar = docSnap.data(); if (bar.lat && bar.lng) addBarMarker(docSnap.id, bar); });
   applyMapFilter();
 }
 
 export async function addBarMarker(id, bar) {
   if (!leafletMap) return;
   const icon = L.divIcon({ className:"", html:'<div class="bar-marker"><span>&#127866;</span></div>', iconSize:[28,28], iconAnchor:[14,28], popupAnchor:[0,-30] });
-  const avgScore = bar.totalScore&&bar.ratingCount ? (bar.totalScore/bar.ratingCount).toFixed(1) : "—";
-  const marker = L.marker([bar.lat,bar.lng],{icon}).addTo(leafletMap);
+  const avgScore = bar.totalScore && bar.ratingCount ? (bar.totalScore / bar.ratingCount).toFixed(1) : "—";
+  const marker = L.marker([bar.lat, bar.lng], { icon }).addTo(leafletMap);
   allMarkers.push({ id, bar, marker });
 
   marker.on("click", async () => {
-    const q=query(collection(db,"ratings"),where("barId","==",id),orderBy("createdAt","desc"),limit(5));
-    const snap=await getDocs(q);
-    let commentsHtml="";
-    snap.forEach(d=>{
-      const r=d.data();
-      if(r.comment) commentsHtml+=`<div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,0.05);border-radius:8px;border-left:2px solid #F5A623;">
-        <div style="font-size:11px;color:#aaa;margin-bottom:3px;display:flex;align-items:center;"><strong style="color:#f0ede6;">${r.userName}</strong>${verifiedBadge(r.userName)}&nbsp;&#183;&nbsp;${r.globalScore.toFixed(1)}/10</div>
-        <div style="font-size:13px;color:#f0ede6;">${r.comment}</div>
-      </div>`;
+    const q = query(collection(db,"ratings"), where("barId","==",id), orderBy("createdAt","desc"), limit(5));
+    const snap = await getDocs(q);
+    let commentsHtml = "";
+    snap.forEach(d => {
+      const r = d.data();
+      if (r.comment) commentsHtml += `
+        <div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,0.05);border-radius:8px;border-left:2px solid #F5A623;">
+          <div style="font-size:11px;color:#aaa;margin-bottom:3px;display:flex;align-items:center;">
+            <strong style="color:#f0ede6;">${r.userName}</strong>${verifiedBadge(r.userName)}&nbsp;&#183;&nbsp;${r.globalScore.toFixed(1)}/10
+          </div>
+          <div style="font-size:13px;color:#f0ede6;">${r.comment}</div>
+        </div>`;
     });
-    if(!commentsHtml) commentsHtml='<div style="font-size:12px;color:#888;margin-top:8px;font-style:italic;">Aucun commentaire pour l\'instant.</div>';
+    if (!commentsHtml) commentsHtml = '<div style="font-size:12px;color:#888;margin-top:8px;font-style:italic;">Aucun commentaire pour l\'instant.</div>';
     marker.bindPopup(`
       <div class="popup-bar-name">${bar.name}</div>
-      <div class="popup-bar-score" style="margin-top:4px;">${bar.address}<br/>Note moyenne : <strong>${avgScore}/10</strong> (${bar.ratingCount||0} avis)</div>
+      <div class="popup-bar-score" style="margin-top:4px;">${bar.address}<br/>Note moyenne : <strong>${avgScore}/10</strong> (${bar.ratingCount || 0} avis)</div>
       <div style="margin-top:10px;font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#888;">Commentaires</div>
       ${commentsHtml}
-    `,{maxWidth:280}).openPopup();
+    `, { maxWidth:280 }).openPopup();
   });
 }
