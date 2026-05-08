@@ -365,27 +365,60 @@ function openChat(convoId, title, isGroup = false) {
   document.getElementById("back-chat").addEventListener("click", () => { unsub(); overlay.remove(); loadConversations(); });
 
   const msgArea = document.getElementById("messages-area");
-  const msgsQ = query(collection(db, "conversations", convoId, "messages"), orderBy("createdAt"));
-  const unsub = onSnapshot(msgsQ, async snap => {
+
+  // Cache sender profiles to avoid redundant Firestore reads
+  const senderCache = {};
+  async function getSenderData(uid) {
+    if (senderCache[uid]) return senderCache[uid];
+    try {
+      const s = await getDoc(doc(db, "users", uid));
+      const data = s.exists() ? s.data() : {};
+      senderCache[uid] = data;
+      return data;
+    } catch(_) { return {}; }
+  }
+
+  // Render lock — prevents concurrent async renders causing duplicates
+  let rendering = false;
+  let pendingRender = null;
+
+  const msgsQ = query(
+    collection(db, "conversations", convoId, "messages"),
+    orderBy("createdAt")
+  );
+
+  const unsub = onSnapshot(msgsQ, snap => {
+    // Store latest snap and schedule render
+    pendingRender = snap;
+    if (!rendering) doRender();
+  });
+
+  async function doRender() {
+    if (!pendingRender) return;
+    rendering = true;
+    const snap = pendingRender;
+    pendingRender = null;
+
+    const wasAtBottom = msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight < 60;
     msgArea.innerHTML = "";
+
     for (const m of snap.docs) {
       const msg  = m.data();
+      // Skip messages with no timestamp yet (still pending server confirmation)
+      // They'll appear once Firestore confirms — avoids duplicate flicker
+      if (!msg.createdAt) continue;
+
       const isMe = msg.userId === auth.currentUser.uid;
       const div  = document.createElement("div");
       div.style.cssText = `max-width:75%;align-self:${isMe?"flex-end":"flex-start"};display:flex;flex-direction:column;gap:3px;`;
 
-      // In group chats, show sender name + photo for others
+      // Group chats: show sender name + photo for others
       if (isGroup && !isMe) {
-        let senderPhoto = "&#129489;";
-        let senderPseudo = msg.userName || "?";
-        try {
-          const sSnap = await getDoc(doc(db, "users", msg.userId));
-          if (sSnap.exists()) {
-            const sd = sSnap.data();
-            senderPseudo = sd.pseudo || msg.userName;
-            if (sd.photoURL) senderPhoto = `<img src="${sd.photoURL}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
-          }
-        } catch(_) {}
+        const sd = await getSenderData(msg.userId);
+        const senderPseudo = sd.pseudo || msg.userName || "?";
+        const senderPhoto = sd.photoURL
+          ? `<img src="${sd.photoURL}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+          : "&#129489;";
         const senderRow = document.createElement("div");
         senderRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:2px;";
         senderRow.innerHTML = `
@@ -401,8 +434,14 @@ function openChat(convoId, title, isGroup = false) {
       div.appendChild(bubble);
       msgArea.appendChild(div);
     }
-    msgArea.scrollTop = msgArea.scrollHeight;
-  });
+
+    // Only scroll to bottom if user was already at the bottom
+    if (wasAtBottom) msgArea.scrollTop = msgArea.scrollHeight;
+
+    rendering = false;
+    // If another snapshot came in while rendering, process it now
+    if (pendingRender) doRender();
+  }
 
   async function sendMessage() {
     const input = document.getElementById("msg-input");
@@ -413,15 +452,11 @@ function openChat(convoId, title, isGroup = false) {
     await addDoc(collection(db, "conversations", convoId, "messages"), {
       text, userId: me.uid, userName: me.displayName, createdAt: serverTimestamp()
     });
-    // Mark conversation as unread for all OTHER members
     const convoSnap = await getDoc(doc(db, "conversations", convoId));
     const members = convoSnap.data()?.members || [];
     const unreadBy = members.filter(uid => uid !== me.uid);
     await updateDoc(doc(db, "conversations", convoId), {
-      lastMessage: text,
-      lastSenderId: me.uid,
-      unreadBy,
-      updatedAt: serverTimestamp()
+      lastMessage: text, lastSenderId: me.uid, unreadBy, updatedAt: serverTimestamp()
     });
   }
 
