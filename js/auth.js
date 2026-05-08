@@ -42,18 +42,21 @@ document.getElementById("btn-forgot-password").addEventListener("click", async (
   const email = document.getElementById("login-email").value.trim();
   const errEl = document.getElementById("auth-error");
   errEl.textContent = "";
+  errEl.style.color = "var(--danger)";
   if (!email) {
     errEl.textContent = "Entre ton email ci-dessus pour recevoir le lien.";
-    errEl.style.color = "var(--danger)";
     return;
   }
   try {
     await sendPasswordResetEmail(auth, email);
-    errEl.textContent = "Email envoye ! Verifie ta boite mail.";
+    errEl.textContent = "Email envoye ! Verifie tes spams !";
     errEl.style.color = "var(--gold)";
   } catch (e) {
-    errEl.textContent = "Email introuvable ou invalide.";
-    errEl.style.color = "var(--danger)";
+    if (e.code === "auth/user-not-found") {
+      errEl.textContent = "Aucun compte trouvé avec cet email. Tu peux t'inscrire !";
+    } else {
+      errEl.textContent = "Email invalide ou erreur. Verifie et reessaie.";
+    }
   }
 });
 
@@ -88,7 +91,7 @@ document.getElementById("btn-register").addEventListener("click", async () => {
       photoURL: "", createdAt: serverTimestamp(), friends: []
     });
   } catch (e) {
-    if (e.code === "auth/email-already-in-use") errEl.textContent = "Cet email est deja utilise.";
+    if (e.code === "auth/email-already-in-use") errEl.textContent = "Cet email est deja utilisé.";
     else if (e.code === "auth/weak-password") errEl.textContent = "Mot de passe trop court (6 min).";
     else errEl.textContent = "Erreur lors de l inscription.";
   }
