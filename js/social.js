@@ -5,7 +5,6 @@ import {
   addDoc, updateDoc, serverTimestamp, onSnapshot,
   orderBy, arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { sendNotification } from "./notifications.js";
 
 const page = document.getElementById("page-social");
 
@@ -219,8 +218,6 @@ async function sendFriendRequest(toUid, toPseudo) {
   const existing = await getDocs(query(collection(db, "friendRequests"), where("fromUid","==",me.uid), where("toUid","==",toUid)));
   if (!existing.empty) return;
   await addDoc(collection(db, "friendRequests"), { fromUid: me.uid, fromPseudo: mePseudo, toUid, toPseudo, status: "pending", createdAt: serverTimestamp() });
-  // Notify recipient
-  sendNotification(toUid, `@${mePseudo}`, "friend-request");
 }
 
 async function loadRequests() {
@@ -426,11 +423,6 @@ function openChat(convoId, title, isGroup = false) {
       unreadBy,
       updatedAt: serverTimestamp()
     });
-    // Send push notification to all other members
-    const senderName = me.displayName || "Quelqu'un";
-    for (const uid of unreadBy) {
-      sendNotification(uid, senderName, "message");
-    }
   }
 
   document.getElementById("send-msg").addEventListener("click", sendMessage);
