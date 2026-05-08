@@ -100,12 +100,22 @@ function updateTotalBadge() {
       }
 
       // iPhone home screen badge (Badging API)
+      // On iOS, this requires notification permission first
       if ("setAppBadge" in navigator) {
         if (total > 0) navigator.setAppBadge(total).catch(()=>{});
         else navigator.clearAppBadge().catch(()=>{});
       }
     });
   });
+}
+
+// Request notification permission (needed for app badge on iOS)
+export function requestNotificationPermission() {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "granted") return;
+  if (Notification.permission === "denied") return;
+  // Must be triggered by a user gesture — call this on first login
+  Notification.requestPermission();
 }
 
 function updateNavBadge(page, count) {} // kept for compatibility
