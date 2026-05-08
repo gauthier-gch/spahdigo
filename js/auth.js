@@ -11,6 +11,7 @@ import {
   doc, setDoc, getDocs,
   collection, query, where, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { registerForNotifications } from "./notifications.js";
 
 // Tab switching
 document.querySelectorAll(".auth-tab").forEach(tab => {
@@ -102,10 +103,8 @@ onAuthStateChanged(auth, user => {
     document.getElementById("auth-screen").classList.remove("active");
     document.getElementById("app-screen").classList.add("active");
     window.dispatchEvent(new CustomEvent("user-ready", { detail: user }));
-    // Request notification permission for app badge (iOS needs this)
-    if ("Notification" in window && Notification.permission === "default") {
-      setTimeout(() => Notification.requestPermission(), 1500);
-    }
+    // Register for push notifications
+    registerForNotifications(user);
   } else {
     document.getElementById("auth-screen").classList.add("active");
     document.getElementById("app-screen").classList.remove("active");
