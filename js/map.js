@@ -36,8 +36,9 @@ function initMap() {
   filterBar.addEventListener("click", async e => {
     const btn = e.target.closest("[data-f]"); if (!btn) return;
     const f = btn.dataset.f;
-    if (f === "friend-select") { await openFriendSelector(); return; }
-    if (f === "group-select")  { await openGroupSelector(); return; }
+    // Always reopen selector if it's a friend or group button (even after a selection)
+    if (f === "friend-select" || f.startsWith("friend:")) { await openFriendSelector(); return; }
+    if (f === "group-select"  || f.startsWith("group:"))  { await openGroupSelector();  return; }
     setMapFilter(f, btn);
   });
 
@@ -130,10 +131,13 @@ async function openFriendSelector() {
     btn.innerHTML=`${photo}<span>@${f.pseudo}</span>`;
     btn.addEventListener("click",()=>{
       currentMapFilter=`friend:${f.uid}`;
-      // Update active button label
       document.querySelectorAll(".map-filter-btn").forEach(b=>{b.style.background="transparent";b.style.color="var(--muted)";b.style.borderColor="var(--border)";});
-      const selBtn=document.querySelector('[data-f="friend-select"]');
-      if(selBtn){selBtn.style.background="var(--gold)";selBtn.style.color="var(--dark)";selBtn.textContent=`@${f.pseudo}`;}
+      const selBtn=document.querySelector('[data-f="friend-select"]') || document.querySelector('.map-filter-btn[data-f^="friend"]');
+      if(selBtn){
+        selBtn.style.background="var(--gold)";selBtn.style.color="var(--dark)";selBtn.style.borderColor="var(--gold)";
+        selBtn.textContent=`@${f.pseudo}`;
+        selBtn.dataset.f=`friend:${f.uid}`; // update so re-click reopens selector
+      }
       overlay.remove(); applyMapFilter();
     });
     list.appendChild(btn);
@@ -163,8 +167,12 @@ async function openGroupSelector() {
     btn.addEventListener("click",()=>{
       currentMapFilter=`group:${d.id}`;
       document.querySelectorAll(".map-filter-btn").forEach(b=>{b.style.background="transparent";b.style.color="var(--muted)";b.style.borderColor="var(--border)";});
-      const selBtn=document.querySelector('[data-f="group-select"]');
-      if(selBtn){selBtn.style.background="var(--gold)";selBtn.style.color="var(--dark)";selBtn.textContent=g.name||"Groupe";}
+      const selBtn=document.querySelector('[data-f="group-select"]') || document.querySelector('.map-filter-btn[data-f^="group"]');
+      if(selBtn){
+        selBtn.style.background="var(--gold)";selBtn.style.color="var(--dark)";selBtn.style.borderColor="var(--gold)";
+        selBtn.textContent=g.name||"Groupe";
+        selBtn.dataset.f=`group:${d.id}`; // update so re-click reopens selector
+      }
       overlay.remove(); applyMapFilter();
     });
     list.appendChild(btn);
