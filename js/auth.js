@@ -4,10 +4,11 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   onAuthStateChanged,
-  updateProfile
+  updateProfile,
+  sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
-  doc, setDoc, getDoc, getDocs,
+  doc, setDoc, getDocs,
   collection, query, where, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -36,6 +37,26 @@ document.getElementById("btn-login").addEventListener("click", async () => {
   }
 });
 
+// Forgot password
+document.getElementById("btn-forgot-password").addEventListener("click", async () => {
+  const email = document.getElementById("login-email").value.trim();
+  const errEl = document.getElementById("auth-error");
+  errEl.textContent = "";
+  if (!email) {
+    errEl.textContent = "Entre ton email ci-dessus pour recevoir le lien.";
+    errEl.style.color = "var(--danger)";
+    return;
+  }
+  try {
+    await sendPasswordResetEmail(auth, email);
+    errEl.textContent = "Email envoye ! Verifie ta boite mail.";
+    errEl.style.color = "var(--gold)";
+  } catch (e) {
+    errEl.textContent = "Email introuvable ou invalide.";
+    errEl.style.color = "var(--danger)";
+  }
+});
+
 // Register
 document.getElementById("btn-register").addEventListener("click", async () => {
   const pseudo    = document.getElementById("reg-pseudo").value.trim().toLowerCase();
@@ -47,6 +68,7 @@ document.getElementById("btn-register").addEventListener("click", async () => {
   const password  = document.getElementById("reg-password").value;
   const errEl     = document.getElementById("auth-error");
   errEl.textContent = "";
+  errEl.style.color = "var(--danger)";
 
   if (!pseudo || !firstname || !lastname || !email || !phone || !password) {
     errEl.textContent = "Veuillez remplir tous les champs."; return;
@@ -54,34 +76,24 @@ document.getElementById("btn-register").addEventListener("click", async () => {
   if (pseudo.length < 3) {
     errEl.textContent = "Le pseudo doit faire au moins 3 caracteres."; return;
   }
-
-  // ── Check pseudo uniqueness ──────────────────────────────────
   const pseudoSnap = await getDocs(query(collection(db, "users"), where("pseudo", "==", pseudo)));
   if (!pseudoSnap.empty) {
     errEl.textContent = "Ce pseudo est deja pris, choisis-en un autre."; return;
   }
-
   try {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: pseudo });
     await setDoc(doc(db, "users", cred.user.uid), {
       pseudo, firstname, lastname, name, email, phone,
-      photoURL: "",
-      createdAt: serverTimestamp(),
-      friends: []
+      photoURL: "", createdAt: serverTimestamp(), friends: []
     });
   } catch (e) {
-    if (e.code === "auth/email-already-in-use") {
-      errEl.textContent = "Cet email est deja utilise.";
-    } else if (e.code === "auth/weak-password") {
-      errEl.textContent = "Mot de passe trop court (6 caracteres min).";
-    } else {
-      errEl.textContent = "Erreur lors de l inscription.";
-    }
+    if (e.code === "auth/email-already-in-use") errEl.textContent = "Cet email est deja utilise.";
+    else if (e.code === "auth/weak-password") errEl.textContent = "Mot de passe trop court (6 min).";
+    else errEl.textContent = "Erreur lors de l inscription.";
   }
 });
 
-// Auth state listener
 onAuthStateChanged(auth, user => {
   if (user) {
     document.getElementById("auth-screen").classList.remove("active");
