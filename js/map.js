@@ -28,8 +28,8 @@ function initMap() {
     <button class="map-filter-btn active" data-f="all" style="background:var(--gold);color:var(--dark);border:none;padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);font-weight:600;cursor:pointer;white-space:nowrap;">Tous</button>
     <button class="map-filter-btn" data-f="me" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Moi</button>
     <button class="map-filter-btn" data-f="friends" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Mes amis</button>
-    <button class="map-filter-btn" data-f="friend-select" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Un ami...</button>
-    <button class="map-filter-btn" data-f="group-select" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Groupe...</button>
+    <button class="map-filter-btn" data-f="friend-select" id="map-btn-friend" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Un ami...</button>
+    <button class="map-filter-btn" data-f="group-select" id="map-btn-group" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Groupe...</button>
   `;
   mapContainer.appendChild(filterBar);
 
@@ -132,11 +132,11 @@ async function openFriendSelector() {
     btn.addEventListener("click",()=>{
       currentMapFilter=`friend:${f.uid}`;
       document.querySelectorAll(".map-filter-btn").forEach(b=>{b.style.background="transparent";b.style.color="var(--muted)";b.style.borderColor="var(--border)";});
-      const selBtn=document.querySelector('[data-f="friend-select"]') || document.querySelector('.map-filter-btn[data-f^="friend"]');
+      // Use getElementById to reliably find the button, not querySelector on data-f which may be stale
+      const selBtn = document.getElementById("map-btn-friend");
       if(selBtn){
         selBtn.style.background="var(--gold)";selBtn.style.color="var(--dark)";selBtn.style.borderColor="var(--gold)";
-        selBtn.textContent=`@${f.pseudo}`;
-        selBtn.dataset.f=`friend:${f.uid}`; // update so re-click reopens selector
+        selBtn.innerHTML=`@${f.pseudo}`; // innerHTML not textContent to preserve attributes
       }
       overlay.remove(); applyMapFilter();
     });
@@ -167,11 +167,10 @@ async function openGroupSelector() {
     btn.addEventListener("click",()=>{
       currentMapFilter=`group:${d.id}`;
       document.querySelectorAll(".map-filter-btn").forEach(b=>{b.style.background="transparent";b.style.color="var(--muted)";b.style.borderColor="var(--border)";});
-      const selBtn=document.querySelector('[data-f="group-select"]') || document.querySelector('.map-filter-btn[data-f^="group"]');
+      const selBtn = document.getElementById("map-btn-group");
       if(selBtn){
         selBtn.style.background="var(--gold)";selBtn.style.color="var(--dark)";selBtn.style.borderColor="var(--gold)";
-        selBtn.textContent=g.name||"Groupe";
-        selBtn.dataset.f=`group:${d.id}`; // update so re-click reopens selector
+        selBtn.innerHTML=g.name||"Groupe";
       }
       overlay.remove(); applyMapFilter();
     });
