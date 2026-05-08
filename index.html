@@ -24,20 +24,18 @@
     <div class="auth-container">
       <div class="logo-wrap">
         <img src="icons/logo_spahdigo.png" alt="Spahdigo" class="logo-img" />
-        <p class="tagline">Le bar parfait : vacaciones 🍻</p>
+        <p class="tagline">Le bar parfait : vacaciones &#127867;</p>
       </div>
-
       <div class="auth-tabs">
         <button class="auth-tab active" data-tab="login">Connexion</button>
         <button class="auth-tab" data-tab="register">Inscription</button>
       </div>
-
       <div id="login-form" class="auth-form active">
         <input type="email" id="login-email" placeholder="Email" class="input" />
         <input type="password" id="login-password" placeholder="Mot de passe" class="input" />
         <button id="btn-login" class="btn btn-primary">Se connecter</button>
+        <button id="btn-forgot-password" class="btn btn-ghost" style="font-size:13px;padding:8px;">Mot de passe oublie ?</button>
       </div>
-
       <div id="register-form" class="auth-form">
         <input type="text" id="reg-pseudo" placeholder="Pseudo (ex: gauthierslay)" class="input" />
         <input type="text" id="reg-firstname" placeholder="Prenom" class="input" />
@@ -47,23 +45,18 @@
         <input type="password" id="reg-password" placeholder="Mot de passe (6 caracteres min)" class="input" />
         <button id="btn-register" class="btn btn-primary">Creer mon compte</button>
       </div>
-
       <p id="auth-error" class="auth-error"></p>
     </div>
   </div>
 
   <!-- MAIN APP -->
   <div id="app-screen" class="screen">
-
-    <!-- Top bar with logo -->
     <div class="app-topbar">
       <img src="icons/logo_spahdigo.png" alt="Spahdigo" class="topbar-logo" />
     </div>
-
     <div id="page-map"       class="page active"></div>
     <div id="page-social"    class="page"></div>
     <div id="page-analytics" class="page"></div>
-
     <nav class="bottom-nav">
       <button class="nav-btn active" data-page="map">
         <span class="nav-icon">&#128506;</span>
@@ -93,7 +86,6 @@
           <ul id="bar-search-results" class="search-results"></ul>
           <button id="btn-create-bar" class="btn btn-secondary" style="margin-top:12px">+ Creer un nouveau bar</button>
         </div>
-
         <div id="step-create" class="hidden">
           <h3 class="step-title">Nouveau bar</h3>
           <input type="text" id="new-bar-name" placeholder="Nom du bar" class="input" style="margin-bottom:12px;" />
@@ -103,7 +95,6 @@
           <button id="btn-save-new-bar" class="btn btn-primary" style="margin-top:14px;">Enregistrer et noter</button>
           <button id="btn-back-search" class="btn btn-ghost">&#8592; Retour</button>
         </div>
-
         <div id="step-rate" class="hidden">
           <h3 class="step-title" id="rating-bar-name"></h3>
           <div id="criteria-list" class="criteria-list"></div>
