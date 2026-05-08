@@ -40,36 +40,75 @@ function listenForBadges() {
   const me = auth.currentUser;
 
   // Friend request badge
-  const reqQ = query(collection(db, "friendRequests"), where("toUid", "==", me.uid), where("status", "==", "pending"));
+  const reqQ = query(collection(db, "friendRequests"), where("toUid","==",me.uid), where("status","==","pending"));
   onSnapshot(reqQ, snap => {
-    updateNavBadge("social", snap.size > 0 ? snap.size : 0);
+    const count = snap.size;
     const badge = document.getElementById("requests-badge");
-    if (badge) { badge.textContent = snap.size > 0 ? ` (${snap.size})` : ""; badge.style.color = "var(--gold)"; }
+    if (badge) {
+      badge.textContent = count > 0 ? (count > 9 ? "9+" : count) : "";
+      badge.style.display = count > 0 ? "inline-flex" : "none";
+    }
+    updateTotalBadge();
   });
 
-  // Unread messages badge — check convos where lastSenderId != me
-  const convoQ = query(collection(db, "conversations"), where("members", "array-contains", me.uid));
+  // Unread messages: convos where lastSenderId != me AND unreadBy contains me
+  const convoQ = query(collection(db, "conversations"), where("members","array-contains",me.uid));
   onSnapshot(convoQ, snap => {
     let unread = 0;
-    snap.forEach(d => { if (d.data().lastSenderId && d.data().lastSenderId !== me.uid && d.data().unread) unread++; });
-    // We track unread via a separate field set when message sent
-    updateMsgBadge(unread);
+    snap.forEach(d => {
+      const data = d.data();
+      if (data.unreadBy && data.unreadBy.includes(me.uid)) unread++;
+    });
+    // Update messages tab badge
+    const msgBadge = document.getElementById("msg-tab-badge");
+    if (msgBadge) {
+      msgBadge.textContent = unread > 0 ? unread : "";
+      msgBadge.style.display = unread > 0 ? "inline-flex" : "none";
+    }
+    updateTotalBadge();
   });
 }
 
-function updateNavBadge(page, count) {
-  // Red dot on social nav button
-  const btn = document.querySelector(`.nav-btn[data-page="${page}"]`);
-  if (!btn) return;
-  let dot = btn.querySelector(".nav-badge");
-  if (!dot) { dot = document.createElement("span"); dot.className = "nav-badge"; btn.appendChild(dot); }
-  dot.style.cssText = `position:absolute;top:6px;right:calc(50% - 14px);width:8px;height:8px;background:#e05252;border-radius:50%;display:${count > 0 ? "block" : "none"};`;
+// Updates the nav dot + iPhone home screen badge
+function updateTotalBadge() {
+  const me = auth.currentUser;
+  if (!me) return;
+
+  // Count pending requests
+  getDocs(query(collection(db,"friendRequests"), where("toUid","==",me.uid), where("status","==","pending"))).then(reqSnap => {
+    getDocs(query(collection(db,"conversations"), where("members","array-contains",me.uid))).then(convoSnap => {
+      let unreadMsgs = 0;
+      convoSnap.forEach(d => { if (d.data().unreadBy?.includes(me.uid)) unreadMsgs++; });
+      const total = reqSnap.size + unreadMsgs;
+
+      // Red dot on Social nav button
+      const btn = document.querySelector('.nav-btn[data-page="social"]');
+      if (btn) {
+        let dot = btn.querySelector(".nav-badge");
+        if (!dot) { dot = document.createElement("span"); dot.className = "nav-badge"; btn.appendChild(dot); }
+        dot.style.cssText = `
+          position:absolute;top:4px;right:calc(50% - 18px);
+          min-width:16px;height:16px;padding:0 4px;
+          background:#e05252;border-radius:8px;
+          font-size:10px;font-weight:700;color:#fff;
+          font-family:var(--font-body);
+          display:${total > 0 ? "flex" : "none"};
+          align-items:center;justify-content:center;
+          border:2px solid var(--dark2);
+        `;
+        dot.textContent = total > 0 ? (total > 9 ? "9+" : total) : "";
+      }
+
+      // iPhone home screen badge (Badging API)
+      if ("setAppBadge" in navigator) {
+        if (total > 0) navigator.setAppBadge(total).catch(()=>{});
+        else navigator.clearAppBadge().catch(()=>{});
+      }
+    });
+  });
 }
 
-function updateMsgBadge(count) {
-  const badge = document.getElementById("msg-unread-badge");
-  if (badge) badge.style.display = count > 0 ? "inline" : "none";
-}
+function updateNavBadge(page, count) {} // kept for compatibility
 
 // ── Render base layout ─────────────────────────────────────────
 function renderSocialPage() {
@@ -81,11 +120,13 @@ function renderSocialPage() {
 
     <div style="display:flex;padding:14px 20px 0;">
       <button class="social-tab active" data-tab="friends" style="flex:1;padding:10px;border:none;border-bottom:2px solid var(--gold);background:transparent;color:var(--gold);font-family:var(--font-body);font-weight:600;font-size:13px;cursor:pointer;">Amis</button>
-      <button class="social-tab" data-tab="requests" style="flex:1;padding:10px;border:none;border-bottom:2px solid var(--border);background:transparent;color:var(--muted);font-family:var(--font-body);font-weight:600;font-size:13px;cursor:pointer;">
-        Demandes <span id="requests-badge" style="color:var(--gold);"></span>
+      <button class="social-tab" data-tab="requests" style="flex:1;padding:10px;border:none;border-bottom:2px solid var(--border);background:transparent;color:var(--muted);font-family:var(--font-body);font-weight:600;font-size:13px;cursor:pointer;position:relative;">
+        Demandes
+        <span id="requests-badge" style="display:none;position:absolute;top:4px;right:8px;min-width:16px;height:16px;padding:0 4px;background:#e05252;border-radius:8px;font-size:10px;font-weight:700;color:#fff;font-family:var(--font-body);align-items:center;justify-content:center;"></span>
       </button>
-      <button class="social-tab" data-tab="messages" style="flex:1;padding:10px;border:none;border-bottom:2px solid var(--border);background:transparent;color:var(--muted);font-family:var(--font-body);font-weight:600;font-size:13px;cursor:pointer;">
-        Messages <span id="msg-unread-badge" style="display:none;width:8px;height:8px;background:#e05252;border-radius:50%;display:inline-block;vertical-align:middle;margin-left:4px;"></span>
+      <button class="social-tab" data-tab="messages" style="flex:1;padding:10px;border:none;border-bottom:2px solid var(--border);background:transparent;color:var(--muted);font-family:var(--font-body);font-weight:600;font-size:13px;cursor:pointer;position:relative;">
+        Messages
+        <span id="msg-tab-badge" style="display:none;position:absolute;top:4px;right:8px;min-width:16px;height:16px;padding:0 4px;background:#e05252;border-radius:8px;font-size:10px;font-weight:700;color:#fff;font-family:var(--font-body);align-items:center;justify-content:center;"></span>
       </button>
     </div>
 
@@ -267,13 +308,13 @@ async function loadConversations() {
       photoHTML = otherPhoto ? `<img src="${otherPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : "&#129489;";
     }
     // Unread indicator
-    const isUnread = convo.lastSenderId && convo.lastSenderId !== me.uid;
+    const isUnread = convo.unreadBy && convo.unreadBy.includes(me.uid);
     const item = document.createElement("div");
     item.style.cssText = "display:flex;align-items:center;gap:14px;padding:12px;border-radius:var(--radius);cursor:pointer;transition:background .15s;margin-bottom:4px;";
     item.innerHTML = `
       <div class="avatar" style="width:46px;height:46px;overflow:hidden;position:relative;">
         ${photoHTML}
-        ${isUnread ? `<span style="position:absolute;top:0;right:0;width:10px;height:10px;background:#e05252;border-radius:50%;border:2px solid var(--dark2);"></span>` : ""}
+        ${isUnread ? `<span style="position:absolute;top:-2px;right:-2px;width:14px;height:14px;background:#e05252;border-radius:50%;border:2px solid var(--dark2);"></span>` : ""}
       </div>
       <div style="flex:1;min-width:0;">
         <div style="font-weight:${isUnread ? "700" : "600"};font-size:14px;display:flex;align-items:center;">${displayName}${convo.isGroup ? "" : verifiedBadge(displayName.replace("@",""))}</div>
@@ -285,8 +326,9 @@ async function loadConversations() {
     item.addEventListener("mouseenter", () => item.style.background = "var(--dark3)");
     item.addEventListener("mouseleave", () => item.style.background = "transparent");
     item.addEventListener("click", async () => {
-      // Mark as read
-      await updateDoc(doc(db, "conversations", d.id), { lastSenderId: me.uid });
+      // Mark as read — remove me from unreadBy
+      const { arrayRemove } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+      await updateDoc(doc(db, "conversations", d.id), { unreadBy: arrayRemove(me.uid) });
       openChat(d.id, displayName, convo.isGroup);
     });
     container.appendChild(item);
@@ -358,8 +400,19 @@ function openChat(convoId, title, isGroup = false) {
     if (!text) return;
     input.value = "";
     const me = auth.currentUser;
-    await addDoc(collection(db, "conversations", convoId, "messages"), { text, userId: me.uid, userName: me.displayName, createdAt: serverTimestamp() });
-    await updateDoc(doc(db, "conversations", convoId), { lastMessage: text, lastSenderId: me.uid, updatedAt: serverTimestamp() });
+    await addDoc(collection(db, "conversations", convoId, "messages"), {
+      text, userId: me.uid, userName: me.displayName, createdAt: serverTimestamp()
+    });
+    // Mark conversation as unread for all OTHER members
+    const convoSnap = await getDoc(doc(db, "conversations", convoId));
+    const members = convoSnap.data()?.members || [];
+    const unreadBy = members.filter(uid => uid !== me.uid);
+    await updateDoc(doc(db, "conversations", convoId), {
+      lastMessage: text,
+      lastSenderId: me.uid,
+      unreadBy,
+      updatedAt: serverTimestamp()
+    });
   }
 
   document.getElementById("send-msg").addEventListener("click", sendMessage);
