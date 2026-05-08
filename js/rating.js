@@ -123,7 +123,7 @@ function buildCriteriaUI(prevScores={}, prevSkipped=[]) {
   // Intro text
   const intro = document.createElement("p");
   intro.style.cssText = "font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:16px;padding:12px;background:var(--dark3);border-radius:10px;border-left:3px solid var(--gold);";
-  intro.textContent = "Voici plusieurs criteres pour noter ce bar : attribue une note de 0 a 10 pour chacun. Tu peux ignorer des criteres si tu le souhaite.";
+  intro.textContent = "Voici plusieurs critères pour noter ce bar : attribue une note de 0 a 10 pour chacun. Tu peux ignorer des critères si tu le souhaites.";
   criteriaList.appendChild(intro);
 
   CRITERIA.forEach(c=>{
