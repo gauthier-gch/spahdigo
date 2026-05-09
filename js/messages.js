@@ -81,10 +81,11 @@ async function loadConversations() {
     }
 
     const isUnread = convo.unreadBy?.includes(me.uid);
+    const otherId  = convo.isGroup ? null : convo.members.find(uid => uid !== me.uid);
     const item = document.createElement("div");
     item.style.cssText = "display:flex;align-items:center;gap:14px;padding:12px;border-radius:var(--radius);cursor:pointer;transition:background .15s;margin-bottom:4px;";
     item.innerHTML = `
-      <div style="width:50px;height:50px;border-radius:50%;background:var(--dark3);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;overflow:hidden;position:relative;">
+      <div id="avatar-${d.id}" style="width:50px;height:50px;border-radius:50%;background:var(--dark3);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;overflow:hidden;position:relative;cursor:${otherId?"pointer":"default"};">
         ${photoHTML}
         ${isUnread ? `<span style="position:absolute;top:-2px;right:-2px;width:14px;height:14px;background:#e05252;border-radius:50%;border:2px solid var(--dark2);"></span>` : ""}
       </div>
@@ -98,7 +99,26 @@ async function loadConversations() {
     `;
     item.addEventListener("mouseenter", () => item.style.background = "var(--dark3)");
     item.addEventListener("mouseleave", () => item.style.background = "transparent");
-    item.addEventListener("click", async () => {
+
+    // Click on avatar → view friend profile (only for 1-on-1 convos)
+    if (otherId) {
+      const avatarEl = item.querySelector(`#avatar-${d.id}`);
+      if (avatarEl) {
+        avatarEl.addEventListener("click", async e => {
+          e.stopPropagation();
+          const fSnap = await getDoc(doc(db,"users",otherId));
+          if (fSnap.exists()) {
+            // Dynamically import openFriendProfile from profile.js
+            const { openFriendProfileFromOutside } = await import("./profile.js");
+            openFriendProfileFromOutside(otherId, fSnap.data());
+          }
+        });
+      }
+    }
+
+    // Click on row → open chat
+    item.addEventListener("click", async e => {
+      if (e.target.closest(`#avatar-${d.id}`)) return; // handled above
       if (isUnread) {
         const { arrayRemove } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
         await updateDoc(doc(db,"conversations",d.id), { unreadBy: arrayRemove(me.uid) });
