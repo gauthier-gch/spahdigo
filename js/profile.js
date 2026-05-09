@@ -112,6 +112,13 @@ async function renderProfilePage() {
         </button>
       </div>
 
+      <!-- Suggestion button -->
+      <div style="padding:0 20px;margin-bottom:16px;">
+        <button id="btn-suggest" class="btn btn-secondary" style="font-size:13px;padding:10px;width:100%;">
+          &#128161; Suggerer une amelioration
+        </button>
+      </div>
+
       <!-- Divider -->
       <div style="height:1px;background:var(--border);margin:0 20px 16px;"></div>
 
@@ -133,6 +140,7 @@ async function renderProfilePage() {
   document.getElementById("btn-edit-profile").addEventListener("click", openEditProfile);
   document.getElementById("btn-add-friend").addEventListener("click", openAddFriend);
   document.getElementById("btn-friend-requests").addEventListener("click", openFriendRequests);
+  document.getElementById("btn-suggest").addEventListener("click", openSuggestionForm);
   document.getElementById("btn-friends-count").addEventListener("click", () => openFriendsList(friendIds));
 }
 
@@ -527,6 +535,109 @@ async function openEditProfile() {
   });
 }
 
+// ── Suggestion form ────────────────────────────────────────────
+const EMAILJS_SERVICE  = "service_dhgtzc9";
+const EMAILJS_TPL_ADMIN = "template_t28s2l5";
+const EMAILJS_TPL_USER  = "template_kpcozrj";
+const EMAILJS_PUBLIC_KEY = "G82tEyw20uNJ6ILo-";
+
+async function openSuggestionForm() {
+  const user     = auth.currentUser;
+  const userSnap = await getDoc(doc(db, "users", user.uid));
+  const userData = userSnap.data() || {};
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:24px;";
+  overlay.innerHTML = `
+    <div style="background:var(--dark2);border-radius:24px;padding:24px;width:100%;max-width:360px;border:1px solid var(--border);">
+      <h3 style="font-family:var(--font-display);font-size:26px;color:var(--gold);margin-bottom:6px;letter-spacing:2px;">UNE IDEE ?</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.5;">
+        Dis-nous ce que tu aimerais voir sur Spahdigo !
+      </p>
+      <input
+        id="suggestion-titre"
+        class="input"
+        placeholder="Ton idee en 3 mots"
+        maxlength="80"
+        style="margin-bottom:12px;"
+      />
+      <textarea
+        id="suggestion-desc"
+        class="input"
+        placeholder="Description de la feature que tu aimerais voir apparaitre sur Spahdigo"
+        style="height:120px;resize:none;"
+      ></textarea>
+      <p id="suggestion-status" style="font-size:12px;min-height:16px;margin-top:8px;text-align:center;"></p>
+      <button id="btn-send-suggestion" class="btn btn-primary" style="margin-top:12px;">
+        &#128640; Envoyer ma suggestion
+      </button>
+      <button id="btn-close-suggestion" class="btn btn-ghost" style="margin-top:8px;">Annuler</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById("btn-close-suggestion").addEventListener("click", () => overlay.remove());
+
+  document.getElementById("btn-send-suggestion").addEventListener("click", async () => {
+    const titre  = document.getElementById("suggestion-titre").value.trim();
+    const desc   = document.getElementById("suggestion-desc").value.trim();
+    const status = document.getElementById("suggestion-status");
+    const sendBtn = document.getElementById("btn-send-suggestion");
+
+    if (!titre) { status.textContent = "Donne un titre a ta suggestion."; status.style.color = "var(--danger)"; return; }
+    if (!desc)  { status.textContent = "Ajoute une description."; status.style.color = "var(--danger)"; return; }
+
+    sendBtn.textContent = "Envoi..."; sendBtn.disabled = true;
+    status.textContent = ""; status.style.color = "";
+
+    // Load EmailJS dynamically
+    try {
+      await loadEmailJS();
+
+      const pseudo    = userData.pseudo || user.displayName || "Anonyme";
+      const userEmail = user.email || "";
+
+      // Send notification to admin
+      await emailjs.send(EMAILJS_SERVICE, EMAILJS_TPL_ADMIN, {
+        pseudo, email: userEmail, titre, description: desc
+      }, EMAILJS_PUBLIC_KEY);
+
+      // Send confirmation to user
+      if (userEmail) {
+        await emailjs.send(EMAILJS_SERVICE, EMAILJS_TPL_USER, {
+          pseudo, user_email: userEmail, titre
+        }, EMAILJS_PUBLIC_KEY);
+      }
+
+      status.textContent = "Merci ! Ta suggestion a bien ete envoyee &#127881;";
+      status.style.color = "var(--gold)";
+      sendBtn.textContent = "Envoye !";
+
+      // Auto close after 2 seconds
+      setTimeout(() => overlay.remove(), 2500);
+
+    } catch(e) {
+      console.error("EmailJS error:", e);
+      status.textContent = "Erreur lors de l envoi. Reessaie.";
+      status.style.color = "var(--danger)";
+      sendBtn.textContent = "Envoyer ma suggestion";
+      sendBtn.disabled = false;
+    }
+  });
+}
+
+// Load EmailJS SDK dynamically
+function loadEmailJS() {
+  return new Promise((resolve, reject) => {
+    if (window.emailjs) { resolve(); return; }
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js";
+    script.onload  = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+// ── Image compression ──────────────────────────────────────────
 function compressImage(file, maxSize, quality=0.6) {
   return new Promise(resolve => {
     const reader = new FileReader();
