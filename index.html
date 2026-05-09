@@ -54,21 +54,29 @@
     <div class="app-topbar">
       <img src="icons/logo_spahdigo.png" alt="Spahdigo" class="topbar-logo" />
     </div>
-    <div id="page-map"       class="page active"></div>
-    <div id="page-social"    class="page"></div>
+
+    <!-- 4 pages : Carte - Stats - Messages - Profil -->
+    <div id="page-map"      class="page active"></div>
     <div id="page-analytics" class="page"></div>
+    <div id="page-messages" class="page"></div>
+    <div id="page-profile"  class="page"></div>
+
     <nav class="bottom-nav">
       <button class="nav-btn active" data-page="map">
         <span class="nav-icon">&#128506;</span>
         <span class="nav-label">Carte</span>
       </button>
-      <button class="nav-btn" data-page="social">
-        <span class="nav-icon">&#128101;</span>
-        <span class="nav-label">Social</span>
-      </button>
       <button class="nav-btn" data-page="analytics">
         <span class="nav-icon">&#128202;</span>
         <span class="nav-label">Stats</span>
+      </button>
+      <button class="nav-btn" data-page="messages" style="position:relative;">
+        <span class="nav-icon">&#128172;</span>
+        <span class="nav-label">Messages</span>
+      </button>
+      <button class="nav-btn" data-page="profile" style="position:relative;">
+        <span class="nav-icon">&#129489;</span>
+        <span class="nav-label">Profil</span>
       </button>
     </nav>
   </div>
@@ -110,7 +118,8 @@
   <script type="module" src="js/auth.js"></script>
   <script type="module" src="js/map.js"></script>
   <script type="module" src="js/rating.js"></script>
-  <script type="module" src="js/social.js"></script>
+  <script type="module" src="js/messages.js"></script>
+  <script type="module" src="js/profile.js"></script>
   <script type="module" src="js/analytics.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
