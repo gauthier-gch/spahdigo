@@ -3,7 +3,7 @@ import { db, auth } from "./firebase-config.js";
 import {
   collection, query, where, getDocs, doc, getDoc,
   addDoc, updateDoc, serverTimestamp, onSnapshot,
-  orderBy, arrayRemove, deleteField
+  orderBy, arrayRemove, arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const page = document.getElementById("page-messages");
@@ -190,40 +190,41 @@ function openChat(convoId, title, isGroup = false) {
       bubble.style.cssText = `background:${isMe?"var(--gold)":"var(--card)"};color:${isMe?"var(--dark)":"var(--text)"};padding:10px 14px;border-radius:${isMe?"18px 18px 4px 18px":"18px 18px 18px 4px"};font-size:14px;word-break:break-word;cursor:default;user-select:text;`;
       bubble.textContent = msg.text;
 
-      // Double-click to toggle 🍻 reaction
+      // Double-click to toggle 🍻 reaction (stored as flat array of UIDs)
       const msgId  = m.id;
       const msgRef = doc(db, "conversations", convoId, "messages", msgId);
+
+      // Reaction state from current snapshot (reliable array approach)
+      const reactions     = Array.isArray(msg.reactions) ? msg.reactions : [];
+      const reactionCount = reactions.length;
+      const iLiked        = reactions.includes(myUid);
+
+      async function toggleReaction() {
+        if (iLiked) {
+          await updateDoc(msgRef, { reactions: arrayRemove(myUid) });
+        } else {
+          await updateDoc(msgRef, { reactions: arrayUnion(myUid) });
+        }
+      }
+
       bubble.addEventListener("dblclick", async e => {
         e.preventDefault();
-        const reactions = (await (async () => { try { return msg.reactions || {}; } catch(_){ return {}; } })());
-        const nowLiked  = !reactions[myUid];
-        const updates   = {};
-        if (nowLiked) {
-          updates[`reactions.${myUid}`] = true;
-        } else {
-          updates[`reactions.${myUid}`] = deleteField();
-        }
-        await updateDoc(msgRef, updates);
+        e.stopPropagation();
+        await toggleReaction();
       });
 
       div.appendChild(bubble);
 
-      // Reaction display
-      const reactions    = msg.reactions || {};
-      const reactionCount = Object.keys(reactions).length;
-      const iLiked       = !!reactions[myUid];
-
+      // Reaction pill display
       if (reactionCount > 0) {
         const reactionRow = document.createElement("div");
         reactionRow.style.cssText = `display:flex;justify-content:${isMe?"flex-end":"flex-start"};margin-top:2px;`;
         const pill = document.createElement("button");
         pill.className = `reaction-pill${iLiked?" active":""}`;
         pill.innerHTML = `🍻 <span style="font-weight:600;font-size:12px;">${reactionCount}</span>`;
-        pill.addEventListener("click", async () => {
-          const updates = {};
-          if (iLiked) { updates[`reactions.${myUid}`] = deleteField(); }
-          else { updates[`reactions.${myUid}`] = true; }
-          await updateDoc(msgRef, updates);
+        pill.addEventListener("click", async e => {
+          e.stopPropagation();
+          await toggleReaction();
         });
         reactionRow.appendChild(pill);
         div.appendChild(reactionRow);

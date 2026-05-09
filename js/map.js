@@ -84,14 +84,17 @@ function initMap() {
   noteBtn.innerHTML = "🍺 Noter un bar";
   mapContainer.appendChild(noteBtn);
 
-  // ── Geolocation button ─────────────────────────────────────
+  // ── Geolocation "fly to me" button ────────────────────────
   const geoBtn = document.createElement("button");
   geoBtn.id = "btn-geolocate";
-  geoBtn.innerHTML = "◎";
-  geoBtn.title = "Ma position";
-  geoBtn.style.cssText = "position:absolute;bottom:84px;right:14px;z-index:500;width:44px;height:44px;background:var(--dark2);border:1px solid var(--border);color:var(--text);border-radius:50%;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.5);transition:all .2s;backdrop-filter:blur(6px);";
+  geoBtn.innerHTML = "📍";
+  geoBtn.title = "Centrer sur ma position";
+  geoBtn.style.cssText = "position:absolute;bottom:84px;right:14px;z-index:500;width:44px;height:44px;background:var(--dark2);border:1px solid var(--border);color:var(--text);border-radius:50%;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.5);transition:all .2s;backdrop-filter:blur(6px);opacity:0;pointer-events:none;";
   mapContainer.appendChild(geoBtn);
-  geoBtn.addEventListener("click", () => toggleGeolocation(geoBtn));
+  // Clicking flies the map to the current position
+  geoBtn.addEventListener("click", () => {
+    if (userLocationMarker) leafletMap.flyTo(userLocationMarker.getLatLng(), 16, { duration:1.2 });
+  });
 
   // ── Initialize Leaflet ─────────────────────────────────────
   leafletMap = L.map("map", { center:[48.8566,2.3522], zoom:13, zoomControl:false });
@@ -102,6 +105,9 @@ function initMap() {
   setTimeout(() => leafletMap.invalidateSize(), 100);
   setTimeout(() => leafletMap.invalidateSize(), 500);
   loadBarsOnMap();
+
+  // ── Auto-start geolocation on map init ─────────────────────
+  startGeolocation(geoBtn);
 }
 
 // ── Filter helpers ─────────────────────────────────────────────
@@ -189,30 +195,47 @@ async function toggleMetroLines(btn) {
   if (btn) { btn.textContent = "⏳ Métro"; btn.style.opacity="0.7"; }
 
   if (!metroLoaded) {
-    try {
-      // Fetch Paris metro routes via free OpenStreetMap Overpass API (no API key needed)
-      const q = `[out:json][timeout:30];(relation["route"="subway"](48.80,2.25,48.93,2.42););out geom;`;
-      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
-      const data = await res.json();
-
-      metroLayerGroup = L.layerGroup();
-      data.elements.forEach(el => {
-        if (el.type !== "relation") return;
-        const ref   = el.tags?.ref || "";
-        const color = METRO_COLORS[ref] || "#888";
-        el.members.forEach(member => {
-          if (member.type !== "way" || !member.geometry) return;
-          const latlngs = member.geometry.map(p => [p.lat, p.lon]);
-          L.polyline(latlngs, { color, weight:3, opacity:0.8 }).addTo(metroLayerGroup);
-        });
-      });
-      metroLoaded = true;
-    } catch(err) {
-      console.error("Metro lines fetch failed:", err);
+    // Free OpenStreetMap Overpass API — no API key needed.
+    // Match subway + RER relations in greater Paris bounding box.
+    const q = `[out:json][timeout:30];(relation["route"~"subway|metro"](48.75,2.15,48.98,2.55););out geom;`;
+    const body = `data=${encodeURIComponent(q)}`;
+    const postOpts = { method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"}, body };
+    // Try primary mirror then two fallbacks
+    const MIRRORS = [
+      "https://overpass-api.de/api/interpreter",
+      "https://overpass.kumi.systems/api/interpreter",
+      "https://overpass.private.coffee/api/interpreter",
+    ];
+    let data = null;
+    for (const mirror of MIRRORS) {
+      try {
+        const ctrl = new AbortController();
+        const tid  = setTimeout(() => ctrl.abort(), 20000);
+        const res  = await fetch(mirror, { ...postOpts, signal: ctrl.signal });
+        clearTimeout(tid);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        data = await res.json();
+        break;
+      } catch(e) { console.warn("Overpass mirror failed:", mirror, e.message); }
+    }
+    if (!data || !data.elements?.length) {
       if (btn) { btn.textContent = "🚇 Métro"; btn.style.opacity="1"; }
       alert("Impossible de charger les lignes de métro. Réessaie plus tard.");
       return;
     }
+
+    metroLayerGroup = L.layerGroup();
+    data.elements.forEach(el => {
+      if (el.type !== "relation") return;
+      const ref   = el.tags?.ref || "";
+      const color = METRO_COLORS[ref] || "#aaa";
+      el.members.forEach(member => {
+        if (member.type !== "way" || !member.geometry?.length) return;
+        const latlngs = member.geometry.map(p => [p.lat, p.lon]);
+        L.polyline(latlngs, { color, weight:3, opacity:0.85 }).addTo(metroLayerGroup);
+      });
+    });
+    metroLoaded = true;
   }
 
   metroLayerGroup.addTo(leafletMap);
@@ -226,44 +249,36 @@ async function toggleMetroLines(btn) {
   }
 }
 
-// ── Geolocation ────────────────────────────────────────────────
-function toggleGeolocation(btn) {
-  if (!navigator.geolocation) {
-    alert("La géolocalisation n'est pas supportée sur votre appareil.");
-    return;
-  }
+// ── Geolocation — auto-start, button only re-centers ──────────
+function startGeolocation(btn) {
+  if (!navigator.geolocation) return;
 
-  if (geoActive) {
-    if (geoWatcher !== null) { navigator.geolocation.clearWatch(geoWatcher); geoWatcher = null; }
-    if (userLocationMarker) { leafletMap.removeLayer(userLocationMarker); userLocationMarker = null; }
-    geoActive = false;
-    btn.style.background = "var(--dark2)";
-    btn.style.color      = "var(--text)";
-    btn.style.borderColor = "var(--border)";
-    return;
-  }
+  const icon = L.divIcon({
+    className: "",
+    html: '<div class="user-location-marker"></div>',
+    iconSize: [16,16], iconAnchor: [8,8]
+  });
 
-  navigator.geolocation.getCurrentPosition(pos => {
+  let firstFix = true;
+
+  geoWatcher = navigator.geolocation.watchPosition(pos => {
     const { latitude: lat, longitude: lng } = pos.coords;
-    const icon = L.divIcon({
-      className: "",
-      html: '<div class="user-location-marker"></div>',
-      iconSize: [16,16], iconAnchor: [8,8]
-    });
-    userLocationMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(leafletMap);
-    leafletMap.flyTo([lat, lng], 15, { duration: 1.5 });
-
-    geoWatcher = navigator.geolocation.watchPosition(p => {
-      if (userLocationMarker) userLocationMarker.setLatLng([p.coords.latitude, p.coords.longitude]);
-    }, null, { enableHighAccuracy: true });
-
-    geoActive = true;
-    btn.style.background  = "var(--gold)";
-    btn.style.color       = "var(--dark)";
-    btn.style.borderColor = "var(--gold)";
+    if (!userLocationMarker) {
+      userLocationMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(leafletMap);
+    } else {
+      userLocationMarker.setLatLng([lat, lng]);
+    }
+    // Show the "fly to me" button once we have a position
+    btn.style.opacity = "1";
+    btn.style.pointerEvents = "auto";
+    // Fly to position only on first fix
+    if (firstFix) {
+      firstFix = false;
+      leafletMap.flyTo([lat, lng], 14, { duration: 1.5 });
+    }
   }, () => {
-    alert("Impossible d'accéder à votre position. Vérifiez les permissions de l'application.");
-  }, { enableHighAccuracy: true, timeout: 10000 });
+    // Permission denied — silently do nothing (no alert on page load)
+  }, { enableHighAccuracy: true, maximumAge: 10000 });
 }
 
 // ── Friend/group selectors ─────────────────────────────────────
