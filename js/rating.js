@@ -109,7 +109,9 @@ document.getElementById("btn-save-new-bar").addEventListener("click", async()=>{
 
   saveBtn.textContent = "Enregistrement..."; saveBtn.disabled = true;
   const barRef = await addDoc(collection(db,"bars"), {
-    name, address, lat, lng, createdAt: serverTimestamp(), ratingCount: 0, totalScore: 0
+    name, address, lat, lng,
+    createdBy: auth.currentUser.uid,
+    createdAt: serverTimestamp(), ratingCount: 0, totalScore: 0
   });
   allBars = [];
   const bar = { id: barRef.id, name, address, lat, lng };
