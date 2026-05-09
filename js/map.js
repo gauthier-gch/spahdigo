@@ -10,8 +10,38 @@ function verifiedBadge(pseudo) {
 
 let mapInitialized = false;
 let leafletMap;
-let allMarkers = []; // { id, bar, marker }
+let allMarkers = [];
 let currentMapFilter = "all";
+let ratedBarIds = new Set();
+
+// ── Metro lines state ──────────────────────────────────────────
+let metroLayerGroup = null;
+let metroLoaded     = false;
+let metroVisible    = false;
+
+// ── Geolocation state ──────────────────────────────────────────
+let userLocationMarker = null;
+let geoWatcher         = null;
+let geoActive          = false;
+
+// ── Score → color gradient (Red → Gold → Green) ───────────────
+function scoreToColor(score) {
+  if (score === null || score === undefined || isNaN(score)) return "#888888";
+  const t = Math.max(0, Math.min(10, score)) / 10;
+  let r, g, b;
+  if (t < 0.5) {
+    const x = t * 2;
+    r = Math.round(224 + (245 - 224) * x);
+    g = Math.round(82  + (166 - 82)  * x);
+    b = Math.round(82  + (35  - 82)  * x);
+  } else {
+    const x = (t - 0.5) * 2;
+    r = Math.round(245 + (76  - 245) * x);
+    g = Math.round(166 + (175 - 166) * x);
+    b = Math.round(35  + (80  - 35)  * x);
+  }
+  return `rgb(${r},${g},${b})`;
+}
 
 window.addEventListener("user-ready", () => { initMap(); });
 
@@ -20,36 +50,50 @@ function initMap() {
   mapInitialized = true;
   const mapContainer = document.getElementById("page-map");
 
+  // ── Filter bar ─────────────────────────────────────────────
   const filterBar = document.createElement("div");
   filterBar.id = "map-filter-bar";
-  filterBar.style.cssText = "position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:500;display:flex;gap:6px;background:rgba(13,13,13,0.85);padding:6px 10px;border-radius:50px;border:1px solid var(--border);backdrop-filter:blur(8px);white-space:nowrap;max-width:92vw;overflow-x:auto;";
+  filterBar.style.cssText = "position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:500;display:flex;gap:6px;background:rgba(20,20,23,0.9);padding:6px 10px;border-radius:50px;border:1px solid var(--border);backdrop-filter:blur(10px);white-space:nowrap;max-width:92vw;overflow-x:auto;";
   filterBar.innerHTML = `
     <button class="map-filter-btn active" data-f="all"           style="background:var(--gold);color:var(--dark);border:none;padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);font-weight:600;cursor:pointer;white-space:nowrap;">Tous</button>
     <button class="map-filter-btn"        data-f="me"            style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Moi</button>
     <button class="map-filter-btn"        data-f="friends"       style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Mes amis</button>
     <button class="map-filter-btn"        data-f="friend-select" id="map-btn-friend" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Un ami...</button>
     <button class="map-filter-btn"        data-f="group-select"  id="map-btn-group"  style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Groupe...</button>
+    <button class="map-filter-btn"        data-f="metro"         id="map-btn-metro"  style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">🚇 Métro</button>
   `;
   mapContainer.appendChild(filterBar);
 
-  // FIX: use a dedicated flag instead of startsWith on data-f
   filterBar.addEventListener("click", async e => {
     const btn = e.target.closest("[data-f]"); if (!btn) return;
     const f = btn.dataset.f;
     if (f === "friend-select") { await openFriendSelector(); return; }
     if (f === "group-select")  { await openGroupSelector();  return; }
+    if (f === "metro")         { await toggleMetroLines(btn); return; }
     setMapFilter(f, btn);
   });
 
+  // ── Map div ────────────────────────────────────────────────
   const mapDiv = document.createElement("div");
   mapDiv.id = "map"; mapDiv.style.cssText = "position:absolute;inset:0;";
   mapContainer.appendChild(mapDiv);
 
+  // ── "Noter un bar" button ──────────────────────────────────
   const noteBtn = document.createElement("button");
   noteBtn.id = "btn-noter-bar"; noteBtn.className = "btn btn-primary";
   noteBtn.innerHTML = "🍺 Noter un bar";
   mapContainer.appendChild(noteBtn);
 
+  // ── Geolocation button ─────────────────────────────────────
+  const geoBtn = document.createElement("button");
+  geoBtn.id = "btn-geolocate";
+  geoBtn.innerHTML = "◎";
+  geoBtn.title = "Ma position";
+  geoBtn.style.cssText = "position:absolute;bottom:84px;right:14px;z-index:500;width:44px;height:44px;background:var(--dark2);border:1px solid var(--border);color:var(--text);border-radius:50%;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.5);transition:all .2s;backdrop-filter:blur(6px);";
+  mapContainer.appendChild(geoBtn);
+  geoBtn.addEventListener("click", () => toggleGeolocation(geoBtn));
+
+  // ── Initialize Leaflet ─────────────────────────────────────
   leafletMap = L.map("map", { center:[48.8566,2.3522], zoom:13, zoomControl:false });
   window._leafletMap = leafletMap;
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { attribution:"© OpenStreetMap © CartoDB", subdomains:"abcd", maxZoom:19 }).addTo(leafletMap);
@@ -60,9 +104,11 @@ function initMap() {
   loadBarsOnMap();
 }
 
+// ── Filter helpers ─────────────────────────────────────────────
 function setMapFilter(f, activeBtn) {
   currentMapFilter = f;
   document.querySelectorAll(".map-filter-btn").forEach(b => {
+    if (b.dataset.f === "metro") return; // don't reset metro toggle
     b.style.background="transparent"; b.style.color="var(--muted)"; b.style.borderColor="var(--border)"; b.classList.remove("active");
   });
   if (activeBtn) {
@@ -84,7 +130,6 @@ async function applyMapFilter() {
     const meSnap = await getDoc(doc(db,"users",me.uid));
     const friends = meSnap.data()?.friends || [];
     const uids = [me.uid, ...friends];
-    // Firestore "in" limit is 10 — batch if needed
     let barIds = new Set();
     for (let i = 0; i < uids.length; i += 10) {
       const batch = uids.slice(i, i + 10);
@@ -126,6 +171,102 @@ async function applyMapFilter() {
   });
 }
 
+// ── Metro lines ────────────────────────────────────────────────
+const METRO_COLORS = {
+  "1":"#FFCD00","2":"#003CA6","3":"#837902","3b":"#6EC4E8","4":"#CF009E",
+  "5":"#FF7E2E","6":"#6ECA97","7":"#FA9ABA","7b":"#6ECA97","8":"#E19BDF",
+  "9":"#B6BD00","10":"#C9910D","11":"#704B1C","12":"#007852","13":"#6EC4E8","14":"#62259D"
+};
+
+async function toggleMetroLines(btn) {
+  if (metroVisible) {
+    if (metroLayerGroup) metroLayerGroup.removeFrom(leafletMap);
+    metroVisible = false;
+    if (btn) { btn.style.background="transparent"; btn.style.color="var(--muted)"; btn.style.borderColor="var(--border)"; }
+    return;
+  }
+
+  if (btn) { btn.textContent = "⏳ Métro"; btn.style.opacity="0.7"; }
+
+  if (!metroLoaded) {
+    try {
+      // Fetch Paris metro routes via free OpenStreetMap Overpass API (no API key needed)
+      const q = `[out:json][timeout:30];(relation["route"="subway"](48.80,2.25,48.93,2.42););out geom;`;
+      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
+      const data = await res.json();
+
+      metroLayerGroup = L.layerGroup();
+      data.elements.forEach(el => {
+        if (el.type !== "relation") return;
+        const ref   = el.tags?.ref || "";
+        const color = METRO_COLORS[ref] || "#888";
+        el.members.forEach(member => {
+          if (member.type !== "way" || !member.geometry) return;
+          const latlngs = member.geometry.map(p => [p.lat, p.lon]);
+          L.polyline(latlngs, { color, weight:3, opacity:0.8 }).addTo(metroLayerGroup);
+        });
+      });
+      metroLoaded = true;
+    } catch(err) {
+      console.error("Metro lines fetch failed:", err);
+      if (btn) { btn.textContent = "🚇 Métro"; btn.style.opacity="1"; }
+      alert("Impossible de charger les lignes de métro. Réessaie plus tard.");
+      return;
+    }
+  }
+
+  metroLayerGroup.addTo(leafletMap);
+  metroVisible = true;
+  if (btn) {
+    btn.textContent = "🚇 Métro";
+    btn.style.opacity = "1";
+    btn.style.background = "var(--gold)";
+    btn.style.color = "var(--dark)";
+    btn.style.borderColor = "var(--gold)";
+  }
+}
+
+// ── Geolocation ────────────────────────────────────────────────
+function toggleGeolocation(btn) {
+  if (!navigator.geolocation) {
+    alert("La géolocalisation n'est pas supportée sur votre appareil.");
+    return;
+  }
+
+  if (geoActive) {
+    if (geoWatcher !== null) { navigator.geolocation.clearWatch(geoWatcher); geoWatcher = null; }
+    if (userLocationMarker) { leafletMap.removeLayer(userLocationMarker); userLocationMarker = null; }
+    geoActive = false;
+    btn.style.background = "var(--dark2)";
+    btn.style.color      = "var(--text)";
+    btn.style.borderColor = "var(--border)";
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(pos => {
+    const { latitude: lat, longitude: lng } = pos.coords;
+    const icon = L.divIcon({
+      className: "",
+      html: '<div class="user-location-marker"></div>',
+      iconSize: [16,16], iconAnchor: [8,8]
+    });
+    userLocationMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000 }).addTo(leafletMap);
+    leafletMap.flyTo([lat, lng], 15, { duration: 1.5 });
+
+    geoWatcher = navigator.geolocation.watchPosition(p => {
+      if (userLocationMarker) userLocationMarker.setLatLng([p.coords.latitude, p.coords.longitude]);
+    }, null, { enableHighAccuracy: true });
+
+    geoActive = true;
+    btn.style.background  = "var(--gold)";
+    btn.style.color       = "var(--dark)";
+    btn.style.borderColor = "var(--gold)";
+  }, () => {
+    alert("Impossible d'accéder à votre position. Vérifiez les permissions de l'application.");
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+// ── Friend/group selectors ─────────────────────────────────────
 async function openFriendSelector() {
   const me = auth.currentUser;
   const meSnap = await getDoc(doc(db,"users",me.uid));
@@ -142,23 +283,14 @@ async function openFriendSelector() {
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:3000;display:flex;align-items:center;justify-content:center;padding:24px;";
   overlay.innerHTML = `
     <div style="background:var(--dark2);border-radius:20px;padding:20px;width:100%;max-width:320px;border:1px solid var(--border);">
-      <h3 style="font-family:var(--font-display);font-size:22px;color:var(--gold);margin-bottom:14px;">Choisir un ami</h3>
+      <h3 style="font-family:var(--font-display);font-size:20px;color:var(--gold);margin-bottom:14px;">Choisir un ami</h3>
       <div id="friend-list-select" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
       <button id="close-friend-sel" class="btn btn-ghost" style="margin-top:12px;">Annuler</button>
     </div>
   `;
   document.body.appendChild(overlay);
-
-  // FIX: stopPropagation so the click doesn't bubble to filterBar and reopen selector
-  document.getElementById("close-friend-sel").addEventListener("click", e => {
-    e.stopPropagation();
-    overlay.remove();
-  });
-
-  // Also close on background click
-  overlay.addEventListener("click", e => {
-    if (e.target === overlay) overlay.remove();
-  });
+  document.getElementById("close-friend-sel").addEventListener("click", e => { e.stopPropagation(); overlay.remove(); });
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
 
   const list = document.getElementById("friend-list-select");
   friends.forEach(f => {
@@ -171,15 +303,13 @@ async function openFriendSelector() {
     btn.addEventListener("click", e => {
       e.stopPropagation();
       currentMapFilter = `friend:${f.uid}`;
-      // Reset all buttons
       document.querySelectorAll(".map-filter-btn").forEach(b => {
+        if (b.dataset.f === "metro") return;
         b.style.background="transparent"; b.style.color="var(--muted)"; b.style.borderColor="var(--border)"; b.classList.remove("active");
       });
-      // FIX: update label with textContent (safe — attributes are on the element, not innerHTML)
       const selBtn = document.getElementById("map-btn-friend");
       if (selBtn) {
         selBtn.textContent = `@${f.pseudo}`;
-        // Keep data-f as "friend-select" so the click handler still opens selector on re-click
         selBtn.dataset.f = "friend-select";
         selBtn.style.background="var(--gold)"; selBtn.style.color="var(--dark)"; selBtn.style.borderColor="var(--gold)";
       }
@@ -199,21 +329,14 @@ async function openGroupSelector() {
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:3000;display:flex;align-items:center;justify-content:center;padding:24px;";
   overlay.innerHTML = `
     <div style="background:var(--dark2);border-radius:20px;padding:20px;width:100%;max-width:320px;border:1px solid var(--border);">
-      <h3 style="font-family:var(--font-display);font-size:22px;color:var(--gold);margin-bottom:14px;">Choisir un groupe</h3>
+      <h3 style="font-family:var(--font-display);font-size:20px;color:var(--gold);margin-bottom:14px;">Choisir un groupe</h3>
       <div id="group-list-select" style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;"></div>
       <button id="close-group-sel" class="btn btn-ghost" style="margin-top:12px;">Annuler</button>
     </div>
   `;
   document.body.appendChild(overlay);
-
-  // FIX: stopPropagation + background click
-  document.getElementById("close-group-sel").addEventListener("click", e => {
-    e.stopPropagation();
-    overlay.remove();
-  });
-  overlay.addEventListener("click", e => {
-    if (e.target === overlay) overlay.remove();
-  });
+  document.getElementById("close-group-sel").addEventListener("click", e => { e.stopPropagation(); overlay.remove(); });
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
 
   const list = document.getElementById("group-list-select");
   snap.forEach(d => {
@@ -225,12 +348,13 @@ async function openGroupSelector() {
       e.stopPropagation();
       currentMapFilter = `group:${d.id}`;
       document.querySelectorAll(".map-filter-btn").forEach(b => {
+        if (b.dataset.f === "metro") return;
         b.style.background="transparent"; b.style.color="var(--muted)"; b.style.borderColor="var(--border)"; b.classList.remove("active");
       });
       const selBtn = document.getElementById("map-btn-group");
       if (selBtn) {
         selBtn.textContent = g.name || "Groupe";
-        selBtn.dataset.f = "group-select"; // Keep as "group-select" for re-click
+        selBtn.dataset.f = "group-select";
         selBtn.style.background="var(--gold)"; selBtn.style.color="var(--dark)"; selBtn.style.borderColor="var(--gold)";
       }
       overlay.remove();
@@ -240,20 +364,38 @@ async function openGroupSelector() {
   });
 }
 
+// ── Load all bars ──────────────────────────────────────────────
 export async function loadBarsOnMap() {
   if (!leafletMap) return;
-  // FIX: remove existing markers from map before resetting array
   allMarkers.forEach(({ marker }) => { if (leafletMap.hasLayer(marker)) leafletMap.removeLayer(marker); });
   allMarkers = [];
+
+  // Fetch current user's rated bar IDs for gradient + unrated styling
+  const me = auth.currentUser;
+  if (me) {
+    const mySnap = await getDocs(query(collection(db,"ratings"), where("userId","==",me.uid)));
+    ratedBarIds  = new Set(mySnap.docs.map(d => d.data().barId));
+  }
+
   const snap = await getDocs(collection(db,"bars"));
   snap.forEach(docSnap => { const bar = docSnap.data(); if (bar.lat && bar.lng) addBarMarker(docSnap.id, bar); });
   applyMapFilter();
 }
 
+// ── Add a single bar marker ────────────────────────────────────
 export async function addBarMarker(id, bar) {
   if (!leafletMap) return;
-  const icon = L.divIcon({ className:"", html:'<div class="bar-marker"><span>&#127866;</span></div>', iconSize:[28,28], iconAnchor:[14,28], popupAnchor:[0,-30] });
-  const avgScore = bar.totalScore && bar.ratingCount ? (bar.totalScore / bar.ratingCount).toFixed(1) : "—";
+  const avgScore   = bar.totalScore && bar.ratingCount ? bar.totalScore / bar.ratingCount : null;
+  const markerColor = scoreToColor(avgScore);
+  const isUnrated  = !ratedBarIds.has(id);
+
+  const icon = L.divIcon({
+    className: "",
+    html: `<div class="bar-marker${isUnrated?" unrated":""}" style="background:${markerColor};"><span>&#127866;</span></div>`,
+    iconSize: [28,28], iconAnchor: [14,28], popupAnchor: [0,-30]
+  });
+
+  const avgLabel = avgScore !== null ? avgScore.toFixed(1) : "—";
   const marker = L.marker([bar.lat, bar.lng], { icon }).addTo(leafletMap);
   allMarkers.push({ id, bar, marker });
 
@@ -264,18 +406,18 @@ export async function addBarMarker(id, bar) {
     snap.forEach(d => {
       const r = d.data();
       if (r.comment) commentsHtml += `
-        <div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,0.05);border-radius:8px;border-left:2px solid #F5A623;">
+        <div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,0.05);border-radius:8px;border-left:2px solid var(--gold);">
           <div style="font-size:11px;color:#aaa;margin-bottom:3px;display:flex;align-items:center;">
-            <strong style="color:#f0ede6;">${r.userName}</strong>${verifiedBadge(r.userName)}&nbsp;&#183;&nbsp;${r.globalScore.toFixed(1)}/10
+            <strong style="color:#f5f2ed;">${r.userName}</strong>${verifiedBadge(r.userName)}&nbsp;·&nbsp;${r.globalScore.toFixed(1)}/10
           </div>
-          <div style="font-size:13px;color:#f0ede6;">${r.comment}</div>
+          <div style="font-size:13px;color:#f5f2ed;">${r.comment}</div>
         </div>`;
     });
-    if (!commentsHtml) commentsHtml = '<div style="font-size:12px;color:#888;margin-top:8px;font-style:italic;">Aucun commentaire pour l\'instant.</div>';
+    if (!commentsHtml) commentsHtml = '<div style="font-size:12px;color:#8a8a95;margin-top:8px;font-style:italic;">Aucun commentaire pour l\'instant.</div>';
     marker.bindPopup(`
       <div class="popup-bar-name">${bar.name}</div>
-      <div class="popup-bar-score" style="margin-top:4px;">${bar.address}<br/>Note moyenne : <strong>${avgScore}/10</strong> (${bar.ratingCount || 0} avis)</div>
-      <div style="margin-top:10px;font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#888;">Commentaires</div>
+      <div class="popup-bar-score" style="margin-top:4px;">${bar.address}<br/>Note moyenne : <strong>${avgLabel}/10</strong> (${bar.ratingCount || 0} avis)</div>
+      <div style="margin-top:10px;font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#8a8a95;">Commentaires</div>
       ${commentsHtml}
     `, { maxWidth:280 }).openPopup();
   });

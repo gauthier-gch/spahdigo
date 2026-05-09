@@ -3,7 +3,7 @@ import { db, auth } from "./firebase-config.js";
 import {
   collection, query, where, getDocs, doc, getDoc,
   addDoc, updateDoc, serverTimestamp, onSnapshot,
-  orderBy, arrayRemove
+  orderBy, arrayRemove, deleteField
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const page = document.getElementById("page-messages");
@@ -167,12 +167,15 @@ function openChat(convoId, title, isGroup = false) {
     const snap = pendingRender; pendingRender = null;
     const wasAtBottom = msgArea.scrollHeight - msgArea.scrollTop - msgArea.clientHeight < 60;
     msgArea.innerHTML = "";
+    const myUid = auth.currentUser.uid;
+
     for (const m of snap.docs) {
       const msg  = m.data();
       if (!msg.createdAt) continue;
-      const isMe = msg.userId === auth.currentUser.uid;
+      const isMe = msg.userId === myUid;
       const div  = document.createElement("div");
       div.style.cssText = `max-width:75%;align-self:${isMe?"flex-end":"flex-start"};display:flex;flex-direction:column;gap:3px;`;
+
       if (isGroup && !isMe) {
         const sd = await getSender(msg.userId);
         const photo = sd.photoURL ? `<img src="${sd.photoURL}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : "&#129489;";
@@ -181,12 +184,54 @@ function openChat(convoId, title, isGroup = false) {
         row.innerHTML = `<div style="width:22px;height:22px;border-radius:50%;background:var(--dark3);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;">${photo}</div><span style="font-size:11px;color:var(--muted);font-weight:600;">@${sd.pseudo||msg.userName||"?"}</span>`;
         div.appendChild(row);
       }
+
+      // Message bubble
       const bubble = document.createElement("div");
-      bubble.style.cssText = `background:${isMe?"var(--gold)":"var(--card)"};color:${isMe?"var(--dark)":"var(--text)"};padding:10px 14px;border-radius:${isMe?"18px 18px 4px 18px":"18px 18px 18px 4px"};font-size:14px;word-break:break-word;`;
+      bubble.style.cssText = `background:${isMe?"var(--gold)":"var(--card)"};color:${isMe?"var(--dark)":"var(--text)"};padding:10px 14px;border-radius:${isMe?"18px 18px 4px 18px":"18px 18px 18px 4px"};font-size:14px;word-break:break-word;cursor:default;user-select:text;`;
       bubble.textContent = msg.text;
+
+      // Double-click to toggle 🍻 reaction
+      const msgId  = m.id;
+      const msgRef = doc(db, "conversations", convoId, "messages", msgId);
+      bubble.addEventListener("dblclick", async e => {
+        e.preventDefault();
+        const reactions = (await (async () => { try { return msg.reactions || {}; } catch(_){ return {}; } })());
+        const nowLiked  = !reactions[myUid];
+        const updates   = {};
+        if (nowLiked) {
+          updates[`reactions.${myUid}`] = true;
+        } else {
+          updates[`reactions.${myUid}`] = deleteField();
+        }
+        await updateDoc(msgRef, updates);
+      });
+
       div.appendChild(bubble);
+
+      // Reaction display
+      const reactions    = msg.reactions || {};
+      const reactionCount = Object.keys(reactions).length;
+      const iLiked       = !!reactions[myUid];
+
+      if (reactionCount > 0) {
+        const reactionRow = document.createElement("div");
+        reactionRow.style.cssText = `display:flex;justify-content:${isMe?"flex-end":"flex-start"};margin-top:2px;`;
+        const pill = document.createElement("button");
+        pill.className = `reaction-pill${iLiked?" active":""}`;
+        pill.innerHTML = `🍻 <span style="font-weight:600;font-size:12px;">${reactionCount}</span>`;
+        pill.addEventListener("click", async () => {
+          const updates = {};
+          if (iLiked) { updates[`reactions.${myUid}`] = deleteField(); }
+          else { updates[`reactions.${myUid}`] = true; }
+          await updateDoc(msgRef, updates);
+        });
+        reactionRow.appendChild(pill);
+        div.appendChild(reactionRow);
+      }
+
       msgArea.appendChild(div);
     }
+
     if (wasAtBottom) msgArea.scrollTop = msgArea.scrollHeight;
     rendering = false;
     if (pendingRender) doRender();

@@ -176,9 +176,12 @@ export async function openFriendProfileFromOutside(uid, userData) {
 }
 
 async function openFriendProfile(uid, userData) {
-  const [barsRatedSnap] = await Promise.all([
-    getDocs(query(collection(db,"ratings"), where("userId","==",uid)))
+  const me = auth.currentUser;
+  const [barsRatedSnap, myRatingsSnap] = await Promise.all([
+    getDocs(query(collection(db,"ratings"), where("userId","==",uid))),
+    getDocs(query(collection(db,"ratings"), where("userId","==",me.uid)))
   ]);
+  const myRatedBarIds = new Set(myRatingsSnap.docs.map(d => d.data().barId));
   const photo = userData.photoURL || "";
 
   const overlay = document.createElement("div");
@@ -234,13 +237,24 @@ async function openFriendProfile(uid, userData) {
   } else {
     ratedContainer.innerHTML = "";
     ratings.slice(0, 10).forEach((r, i) => {
+      const isRated = myRatedBarIds.has(r.barId);
       const item = document.createElement("div");
-      item.style.cssText = "display:flex;align-items:center;gap:12px;padding:12px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border);";
+      item.style.cssText = "display:flex;align-items:center;gap:12px;padding:12px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border);cursor:pointer;transition:background .15s;";
       item.innerHTML = `
-        <div style="font-family:var(--font-display);font-size:22px;color:var(--gold);min-width:28px;">#${i+1}</div>
-        <div style="flex:1;font-weight:600;font-size:14px;">${r.barName}</div>
-        <div style="font-family:var(--font-display);font-size:22px;color:var(--gold);">${r.globalScore.toFixed(1)}</div>
+        <div style="font-family:var(--font-display);font-size:20px;color:var(--gold);min-width:26px;">#${i+1}</div>
+        <div style="flex:1;">
+          <div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            ${r.barName}${!isRated ? '<span class="unrated-badge">pas testé</span>' : ''}
+          </div>
+        </div>
+        <div style="font-family:var(--font-display);font-size:20px;color:var(--gold);">${r.globalScore.toFixed(1)}</div>
       `;
+      item.addEventListener("mouseenter", () => item.style.background = "var(--dark3)");
+      item.addEventListener("mouseleave", () => item.style.background = "var(--card)");
+      item.addEventListener("click", async () => {
+        const { openBarDetailsModal } = await import("./bar-details.js");
+        openBarDetailsModal(r.barId, r.barName);
+      });
       ratedContainer.appendChild(item);
     });
   }
