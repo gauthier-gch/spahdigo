@@ -84,19 +84,141 @@ async function searchAddress(q) {
 function updateAddrStatus(msg,color){ const el=document.getElementById("addr-status"); if(el){el.textContent=msg;el.style.color=color;} }
 
 document.getElementById("btn-save-new-bar").addEventListener("click", async()=>{
-  const name=document.getElementById("new-bar-name").value.trim();
-  const saveBtn=document.getElementById("btn-save-new-bar");
-  if(!name){alert("Donne un nom au bar !");return;}
-  if(!selectedAddr){alert("Selectionne une adresse dans la liste.");return;}
-  saveBtn.textContent="Enregistrement..."; saveBtn.disabled=true;
-  const lat=parseFloat(selectedAddr.lat), lng=parseFloat(selectedAddr.lon), address=selectedAddr.display_name;
-  const barRef=await addDoc(collection(db,"bars"),{name,address,lat,lng,createdAt:serverTimestamp(),ratingCount:0,totalScore:0});
-  allBars=[];
-  const bar={id:barRef.id,name,address,lat,lng};
-  addBarMarker(bar.id,bar);
-  saveBtn.textContent="Enregistrer et noter"; saveBtn.disabled=false;
+  const name    = document.getElementById("new-bar-name").value.trim();
+  const saveBtn = document.getElementById("btn-save-new-bar");
+  if (!name) { alert("Donne un nom au bar !"); return; }
+  if (!selectedAddr) { alert("Selectionne une adresse dans la liste."); return; }
+
+  saveBtn.textContent = "Verification..."; saveBtn.disabled = true;
+
+  const lat     = parseFloat(selectedAddr.lat);
+  const lng     = parseFloat(selectedAddr.lon);
+  const address = selectedAddr.display_name;
+
+  // ── Check for similar existing bars ───────────────────────
+  await fetchAllBars();
+  const similar = findSimilarBars(name, lat, lng, allBars);
+
+  if (similar.length > 0) {
+    saveBtn.textContent = "Enregistrer et noter"; saveBtn.disabled = false;
+    const decision = await showDuplicateWarning(similar, name);
+    if (decision === "rate-existing") return; // already handled inside modal
+    if (decision === "cancel") return;
+    // decision === "create" → continue creating below
+  }
+
+  saveBtn.textContent = "Enregistrement..."; saveBtn.disabled = true;
+  const barRef = await addDoc(collection(db,"bars"), {
+    name, address, lat, lng, createdAt: serverTimestamp(), ratingCount: 0, totalScore: 0
+  });
+  allBars = [];
+  const bar = { id: barRef.id, name, address, lat, lng };
+  addBarMarker(bar.id, bar);
+  saveBtn.textContent = "Enregistrer et noter"; saveBtn.disabled = false;
   openRateStep(bar);
 });
+
+// ── Similarity helpers ─────────────────────────────────────────
+function normalize(str) {
+  return str.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove accents
+    .replace(/[^a-z0-9\s]/g, "").trim();
+}
+
+// Levenshtein distance
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m+1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i-1] === b[j-1]
+        ? dp[i-1][j-1]
+        : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    }
+  }
+  return dp[m][n];
+}
+
+// Similarity score 0-1
+function nameSimilarity(a, b) {
+  const na = normalize(a), nb = normalize(b);
+  if (na === nb) return 1;
+  // Also check if one contains the other
+  if (na.includes(nb) || nb.includes(na)) return 0.85;
+  const maxLen = Math.max(na.length, nb.length);
+  if (maxLen === 0) return 1;
+  return 1 - levenshtein(na, nb) / maxLen;
+}
+
+// Distance in km between two lat/lng points
+function distanceKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLng = (lng2-lng1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function findSimilarBars(name, lat, lng, bars) {
+  return bars.filter(bar => {
+    const nameSim  = nameSimilarity(name, bar.name);
+    const dist     = (bar.lat && bar.lng) ? distanceKm(lat, lng, bar.lat, bar.lng) : 999;
+    // Similar if: name very close OR (name somewhat close AND address close)
+    return nameSim >= 0.75 || (nameSim >= 0.5 && dist < 0.3);
+  }).sort((a, b) => nameSimilarity(name, b.name) - nameSimilarity(name, a.name)).slice(0, 3);
+}
+
+// ── Duplicate warning modal ────────────────────────────────────
+function showDuplicateWarning(similarBars, newName) {
+  return new Promise(resolve => {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:3000;display:flex;align-items:center;justify-content:center;padding:24px;";
+
+    const listHTML = similarBars.map(b => `
+      <div style="padding:10px 12px;background:var(--dark3);border-radius:10px;border:1px solid var(--border);margin-bottom:8px;">
+        <div style="font-weight:600;font-size:14px;color:var(--text);">${b.name}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">${b.address ? b.address.split(",").slice(0,2).join(",") : "Adresse inconnue"}</div>
+      </div>
+    `).join("");
+
+    overlay.innerHTML = `
+      <div style="background:var(--dark2);border-radius:24px;padding:24px;width:100%;max-width:360px;border:1px solid var(--border);">
+        <div style="font-size:22px;margin-bottom:8px;">⚠️</div>
+        <h3 style="font-family:var(--font-display);font-size:22px;color:var(--gold);margin-bottom:8px;letter-spacing:1px;">Bar similaire detecte</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
+          Un ou plusieurs bars ressemblant a <strong style="color:var(--text);">${newName}</strong> existent deja :
+        </p>
+        ${listHTML}
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px;">
+          <button id="dup-rate-existing" class="btn btn-primary">
+            &#127866; Noter le bar existant
+          </button>
+          <button id="dup-create-new" class="btn btn-secondary">
+            + C'est un autre bar, continuer
+          </button>
+          <button id="dup-cancel" class="btn btn-ghost">Annuler</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    document.getElementById("dup-rate-existing").addEventListener("click", () => {
+      overlay.remove();
+      // Open the rate step for the most similar bar
+      openRateStep(similarBars[0]);
+      resolve("rate-existing");
+    });
+    document.getElementById("dup-create-new").addEventListener("click", () => {
+      overlay.remove();
+      resolve("create");
+    });
+    document.getElementById("dup-cancel").addEventListener("click", () => {
+      overlay.remove();
+      resolve("cancel");
+    });
+  });
+}
 
 async function openRateStep(bar) {
   selectedBar=bar; stepSearch.classList.add("hidden"); stepCreate.classList.add("hidden"); stepRate.classList.remove("hidden");
