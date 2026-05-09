@@ -82,11 +82,7 @@ async function renderProfilePage() {
           </div>
           <div style="text-align:center;">
             <div style="font-family:var(--font-display);font-size:28px;color:var(--gold);">${barsRated}</div>
-            <div style="font-size:11px;color:var(--muted);">Notes</div>
-          </div>
-          <div style="text-align:center;">
-            <div style="font-family:var(--font-display);font-size:28px;color:var(--gold);">${barsCreated}</div>
-            <div style="font-size:11px;color:var(--muted);">Bars</div>
+            <div style="font-size:11px;color:var(--muted);">Bars notes</div>
           </div>
         </div>
       </div>
@@ -166,7 +162,11 @@ async function loadFriendsPreview(friendIds) {
   }
 }
 
-// ── Friend profile modal ───────────────────────────────────────
+// ── Friend profile modal (also exported for messages.js) ───────
+export async function openFriendProfileFromOutside(uid, userData) {
+  return openFriendProfile(uid, userData);
+}
+
 async function openFriendProfile(uid, userData) {
   const [barsRatedSnap] = await Promise.all([
     getDocs(query(collection(db,"ratings"), where("userId","==",uid)))
@@ -187,13 +187,13 @@ async function openFriendProfile(uid, userData) {
           ${photo ? `<img src="${photo}" style="width:100%;height:100%;object-fit:cover;" />` : "&#129489;"}
         </div>
         <div style="flex:1;display:flex;justify-content:space-around;">
-          <div style="text-align:center;">
+          <div id="friend-profile-friends-count" style="text-align:center;cursor:pointer;" data-uid="${uid}">
             <div style="font-family:var(--font-display);font-size:28px;color:var(--gold);">${(userData.friends||[]).length}</div>
-            <div style="font-size:11px;color:var(--muted);">Amis</div>
+            <div style="font-size:11px;color:var(--muted);text-decoration:underline dotted;">Amis</div>
           </div>
           <div style="text-align:center;">
             <div style="font-family:var(--font-display);font-size:28px;color:var(--gold);">${barsRatedSnap.size}</div>
-            <div style="font-size:11px;color:var(--muted);">Notes</div>
+            <div style="font-size:11px;color:var(--muted);">Bars notes</div>
           </div>
         </div>
       </div>
@@ -212,6 +212,11 @@ async function openFriendProfile(uid, userData) {
   `;
   document.body.appendChild(overlay);
   document.getElementById("back-friend-profile").addEventListener("click", () => overlay.remove());
+
+  // Click on friend count → show their friends list
+  document.getElementById("friend-profile-friends-count").addEventListener("click", () => {
+    openFriendOfFriendList(uid, userData.friends || [], userData.pseudo);
+  });
 
   // Load friend's rated bars
   const ratedContainer = document.getElementById("friend-bars-rated");
@@ -272,6 +277,69 @@ async function openFriendsList(friendIds) {
     item.addEventListener("click", () => { overlay.remove(); openFriendProfile(fid, f); });
     container.appendChild(item);
   }
+}
+
+// ── Friend-of-friend list (with add button) ────────────────────
+async function openFriendOfFriendList(ownerUid, friendIds, ownerPseudo) {
+  const me = auth.currentUser;
+  const meSnap = await getDoc(doc(db,"users",me.uid));
+  const myFriendIds = meSnap.data()?.friends || [];
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:3000;display:flex;align-items:center;justify-content:center;padding:24px;";
+  overlay.innerHTML = `
+    <div style="background:var(--dark2);border-radius:24px;padding:24px;width:100%;max-width:360px;border:1px solid var(--border);max-height:80vh;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h3 style="font-family:var(--font-display);font-size:22px;color:var(--gold);">AMIS DE @${ownerPseudo}</h3>
+        <button id="close-fof-list" style="background:var(--dark3);border:none;color:var(--muted);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;">&#10005;</button>
+      </div>
+      <div id="fof-list" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;">
+        <p style="color:var(--muted);font-size:13px;">Chargement...</p>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById("close-fof-list").addEventListener("click", () => overlay.remove());
+
+  const container = document.getElementById("fof-list");
+  if (!friendIds.length) { container.innerHTML = `<p style="color:var(--muted);font-size:13px;text-align:center;padding:16px;">Aucun ami pour l'instant.</p>`; return; }
+
+  container.innerHTML = "";
+  for (const fid of friendIds) {
+    if (fid === me.uid) continue; // skip yourself
+    const s = await getDoc(doc(db,"users",fid));
+    if (!s.exists()) continue;
+    const f = s.data();
+    const photo = f.photoURL ? `<img src="${f.photoURL}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : "&#129489;";
+    const isAlreadyFriend = myFriendIds.includes(fid);
+    const item = document.createElement("div");
+    item.style.cssText = "display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--radius);cursor:pointer;transition:background .15s;";
+    item.innerHTML = `
+      <div style="width:40px;height:40px;border-radius:50%;background:var(--dark3);border:2px solid var(--border);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:16px;">${photo}</div>
+      <div style="flex:1;">
+        <div style="display:flex;align-items:center;font-weight:600;font-size:14px;">@${f.pseudo}${verifiedBadge(f.pseudo)}</div>
+        <div style="color:var(--muted);font-size:12px;">${f.name||""}</div>
+      </div>
+      ${!isAlreadyFriend ? `<button data-uid="${fid}" data-pseudo="${f.pseudo}" class="btn-add-fof" style="background:var(--gold);border:none;color:var(--dark);padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-body);">+ Ajouter</button>` : `<span style="font-size:11px;color:var(--muted);">Ami</span>`}
+    `;
+    item.addEventListener("mouseenter", () => item.style.background = "var(--dark3)");
+    item.addEventListener("mouseleave", () => item.style.background = "transparent");
+    // Click on row → view their profile
+    item.addEventListener("click", e => {
+      if (e.target.classList.contains("btn-add-fof")) return;
+      overlay.remove(); openFriendProfile(fid, f);
+    });
+    container.appendChild(item);
+  }
+
+  // Bind add buttons
+  container.querySelectorAll(".btn-add-fof").forEach(btn => {
+    btn.addEventListener("click", async e => {
+      e.stopPropagation();
+      await sendFriendRequest(btn.dataset.uid, btn.dataset.pseudo);
+      btn.textContent = "Demande envoyee !"; btn.disabled = true; btn.style.opacity = "0.6";
+    });
+  });
 }
 
 // ── Add friend ─────────────────────────────────────────────────
