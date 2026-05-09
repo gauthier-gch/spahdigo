@@ -4,18 +4,18 @@ import { collection, addDoc, getDocs, doc, updateDoc, increment, query, where, s
 import { loadBarsOnMap, addBarMarker } from "./map.js";
 
 const CRITERIA = [
-  { key:"prix_biere",           label:"Prix Biere",            weight:3   },
-  { key:"prix_vin",             label:"Prix Vin",              weight:3   },
-  { key:"gout_vin",             label:"Gout Vin",              weight:2   },
-  { key:"ambiance",             label:"Ambiance",              weight:2   },
-  { key:"plage_hh",             label:"Plage Happy Hour",      weight:2   },
-  { key:"distance_maison",      label:"Distance Maison",       weight:3   },
-  { key:"distance_travail",     label:"Distance Travail",      weight:2   },
-  { key:"beaute",               label:"Beaute",                weight:1   },
-  { key:"variete_carte",        label:"Variete Carte",         weight:1.5 },
-  { key:"viabilite_saisonniere",label:"Viabilite Saisonniere", weight:1.5 },
-  { key:"places",               label:"Places",                weight:2   },
-  { key:"toilettes",            label:"Toilettes",             weight:0.5 },
+  { key:"prix_biere",           label:"Prix Bière",            weight:3,   tooltip:"A quel point la bière est peu chère, sur 10 ?" },
+  { key:"prix_vin",             label:"Prix Vin",              weight:3,   tooltip:"A quel point le vin est peu cher, sur 10 ?" },
+  { key:"gout_vin",             label:"Goût Vin",              weight:2,   tooltip:"A quel point le vin est bon, sur 10 ?" },
+  { key:"ambiance",             label:"Ambiance",              weight:2,   tooltip:"A quel point j'apprécie l'ambiance générale du bar, sur 10 ?" },
+  { key:"plage_hh",             label:"Plage HH",              weight:2,   tooltip:"A quel point la plage horaire de la happy hour est cool, sur 10 ?" },
+  { key:"distance_maison",      label:"Distance Maison",       weight:3,   tooltip:"A quel point suis-je proche de ce bar, sur 10 ?" },
+  { key:"distance_travail",     label:"Distance Travail",      weight:2,   tooltip:"A quel point mon travail est proche de ce bar, sur 10 ?" },
+  { key:"beaute",               label:"Beauté",                weight:1,   tooltip:"A quel point ce bar est-il beau, sur 10 ?" },
+  { key:"variete_carte",        label:"Variété Carte",         weight:1.5, tooltip:"A quel point la carte est variée, sur 10 ?" },
+  { key:"viabilite_saisonniere",label:"Viabilité Saisonnière", weight:1.5, tooltip:"A quel point ce bar est viable toute l'année, en hiver comme en été, sur 10 ?" },
+  { key:"places",               label:"Places",                weight:2,   tooltip:"A quel point je trouve facilement des places à ce bar, sur 10 ?" },
+  { key:"toilettes",            label:"Toilettes",             weight:0.5, tooltip:"A quel point les toilettes sont elles propres, sur 10 ?" },
 ];
 
 const modal         = document.getElementById("modal-rate");
@@ -248,8 +248,27 @@ function buildCriteriaUI(prevScores={}, prevSkipped=[]) {
   // Intro text
   const intro = document.createElement("p");
   intro.style.cssText = "font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:16px;padding:12px;background:var(--dark3);border-radius:10px;border-left:3px solid var(--gold);";
-  intro.textContent = "Voici plusieurs criteres pour noter ce bar : attribue une note de 0 a 10 pour chacun. Tu peux ignorer des criteres si tu le souhaite.";
+  intro.textContent = "Voici plusieurs critères pour noter ce bar : attribue une note de 0 à 10 pour chacun. Tu peux ignorer des critères si tu le souhaites. Clique sur ? pour plus d'infos.";
   criteriaList.appendChild(intro);
+
+  // Tooltip handler (delegated on criteriaList)
+  criteriaList.addEventListener("click", e => {
+    const btn = e.target.closest(".tooltip-btn");
+    if (!btn) return;
+    e.stopPropagation();
+    document.querySelectorAll(".criterion-tooltip").forEach(t => t.remove());
+    const text = btn.dataset.tooltip;
+    if (!text) return;
+    const tip = document.createElement("div");
+    tip.className = "criterion-tooltip";
+    tip.textContent = text;
+    document.body.appendChild(tip);
+    const rect = btn.getBoundingClientRect();
+    const tipLeft = Math.max(8, Math.min(rect.left - 60, window.innerWidth - 260));
+    tip.style.top  = (rect.bottom + 8) + "px";
+    tip.style.left = tipLeft + "px";
+    setTimeout(() => document.addEventListener("click", () => tip.remove(), { once:true }), 50);
+  });
 
   CRITERIA.forEach(c=>{
     const val=prevScores[c.key]!==undefined?prevScores[c.key]:5;
@@ -257,7 +276,10 @@ function buildCriteriaUI(prevScores={}, prevSkipped=[]) {
     const div=document.createElement("div"); div.className="criterion-item"; div.dataset.key=c.key;
     div.innerHTML=`
       <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <span style="${skipped?"color:var(--muted);text-decoration:line-through;":""}" id="label-${c.key}">${c.label}</span>
+        <span style="display:flex;align-items:center;gap:0;${skipped?"color:var(--muted);text-decoration:line-through;":""}" id="label-${c.key}">
+          ${c.label}
+          <button type="button" class="tooltip-btn" data-tooltip="${c.tooltip}" aria-label="Info" style="margin-left:5px;flex-shrink:0;">?</button>
+        </span>
         <div style="display:flex;align-items:center;gap:8px;">
           <span class="weight">x${c.weight}</span>
           <span class="score-display" id="disp-${c.key}" style="${skipped?"color:var(--muted);":""}">${skipped?"—":`${val}<span style="font-size:12px;color:var(--muted);font-family:var(--font-body);font-weight:400;"> /10</span>`}</span>
