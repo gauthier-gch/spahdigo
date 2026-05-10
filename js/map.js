@@ -60,7 +60,6 @@ function initMap() {
     <button class="map-filter-btn"        data-f="friends"       style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Mes amis</button>
     <button class="map-filter-btn"        data-f="friend-select" id="map-btn-friend" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Un ami...</button>
     <button class="map-filter-btn"        data-f="group-select"  id="map-btn-group"  style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">Groupe...</button>
-    <button class="map-filter-btn"        data-f="metro"         id="map-btn-metro"  style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;border-radius:20px;font-size:12px;font-family:var(--font-body);cursor:pointer;white-space:nowrap;">🚇 Métro</button>
   `;
   mapContainer.appendChild(filterBar);
 
@@ -69,7 +68,6 @@ function initMap() {
     const f = btn.dataset.f;
     if (f === "friend-select") { await openFriendSelector(); return; }
     if (f === "group-select")  { await openGroupSelector();  return; }
-    if (f === "metro")         { await toggleMetroLines(btn); return; }
     setMapFilter(f, btn);
   });
 
@@ -83,6 +81,15 @@ function initMap() {
   noteBtn.id = "btn-noter-bar"; noteBtn.className = "btn btn-primary";
   noteBtn.innerHTML = "🍺 Noter un bar";
   mapContainer.appendChild(noteBtn);
+
+  // ── Metro toggle button (bottom-right, beside geo button) ──
+  const metroBtn = document.createElement("button");
+  metroBtn.id = "btn-metro-toggle";
+  metroBtn.innerHTML = "🚇";
+  metroBtn.title = "Lignes de métro";
+  metroBtn.style.cssText = "position:absolute;bottom:84px;right:66px;z-index:500;width:44px;height:44px;background:var(--dark2);border:1px solid var(--border);color:var(--text);border-radius:50%;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.5);transition:all .2s;backdrop-filter:blur(6px);";
+  mapContainer.appendChild(metroBtn);
+  metroBtn.addEventListener("click", () => toggleMetroLines(metroBtn));
 
   // ── Geolocation "fly to me" button ────────────────────────
   const geoBtn = document.createElement("button");
@@ -114,7 +121,7 @@ function initMap() {
 function setMapFilter(f, activeBtn) {
   currentMapFilter = f;
   document.querySelectorAll(".map-filter-btn").forEach(b => {
-    if (b.dataset.f === "metro") return; // don't reset metro toggle
+
     b.style.background="transparent"; b.style.color="var(--muted)"; b.style.borderColor="var(--border)"; b.classList.remove("active");
   });
   if (activeBtn) {
@@ -188,11 +195,11 @@ async function toggleMetroLines(btn) {
   if (metroVisible) {
     if (metroLayerGroup) metroLayerGroup.removeFrom(leafletMap);
     metroVisible = false;
-    if (btn) { btn.style.background="transparent"; btn.style.color="var(--muted)"; btn.style.borderColor="var(--border)"; }
+    if (btn) { btn.style.background="var(--dark2)"; btn.style.color="var(--text)"; btn.style.borderColor="var(--border)"; }
     return;
   }
 
-  if (btn) { btn.textContent = "⏳ Métro"; btn.style.opacity="0.7"; }
+  if (btn) { btn.innerHTML = "⏳"; btn.style.opacity="0.7"; }
 
   if (!metroLoaded) {
     // Free OpenStreetMap Overpass API — no API key needed.
@@ -219,7 +226,7 @@ async function toggleMetroLines(btn) {
       } catch(e) { console.warn("Overpass mirror failed:", mirror, e.message); }
     }
     if (!data || !data.elements?.length) {
-      if (btn) { btn.textContent = "🚇 Métro"; btn.style.opacity="1"; }
+      if (btn) { btn.innerHTML = "🚇"; btn.style.opacity="1"; }
       alert("Impossible de charger les lignes de métro. Réessaie plus tard.");
       return;
     }
@@ -241,7 +248,7 @@ async function toggleMetroLines(btn) {
   metroLayerGroup.addTo(leafletMap);
   metroVisible = true;
   if (btn) {
-    btn.textContent = "🚇 Métro";
+    btn.innerHTML = "🚇";
     btn.style.opacity = "1";
     btn.style.background = "var(--gold)";
     btn.style.color = "var(--dark)";
