@@ -70,20 +70,31 @@ document.getElementById("btn-register").addEventListener("click", async () => {
   const phone     = document.getElementById("reg-phone").value.trim();
   const password  = document.getElementById("reg-password").value;
   const errEl     = document.getElementById("auth-error");
+  const btn       = document.getElementById("btn-register");
   errEl.textContent = "";
   errEl.style.color = "var(--danger)";
 
-  if (!pseudo || !firstname || !lastname || !email || !phone || !password) {
+  if (!pseudo || !firstname || !lastname || !email || !password) {
     errEl.textContent = "Veuillez remplir tous les champs."; return;
   }
   if (pseudo.length < 3) {
     errEl.textContent = "Le pseudo doit faire au moins 3 caracteres."; return;
   }
-  const pseudoSnap = await getDocs(query(collection(db, "users"), where("pseudo", "==", pseudo)));
-  if (!pseudoSnap.empty) {
-    errEl.textContent = "Ce pseudo est deja pris, choisis-en un autre."; return;
+  if (password.length < 6) {
+    errEl.textContent = "Mot de passe trop court (6 caracteres min)."; return;
   }
+
+  btn.textContent = "Création du compte..."; btn.disabled = true;
+
   try {
+    // Pseudo uniqueness check — was previously outside try/catch, causing
+    // silent failures on network errors (e.g. slow connections abroad)
+    const pseudoSnap = await getDocs(query(collection(db, "users"), where("pseudo", "==", pseudo)));
+    if (!pseudoSnap.empty) {
+      errEl.textContent = "Ce pseudo est déjà pris, choisis-en un autre.";
+      btn.textContent = "Créer mon compte"; btn.disabled = false;
+      return;
+    }
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: pseudo });
     await setDoc(doc(db, "users", cred.user.uid), {
@@ -91,9 +102,12 @@ document.getElementById("btn-register").addEventListener("click", async () => {
       photoURL: "", createdAt: serverTimestamp(), friends: []
     });
   } catch (e) {
-    if (e.code === "auth/email-already-in-use") errEl.textContent = "Cet email est deja utilise.";
-    else if (e.code === "auth/weak-password") errEl.textContent = "Mot de passe trop court (6 min).";
-    else errEl.textContent = "Erreur lors de l inscription.";
+    btn.textContent = "Créer mon compte"; btn.disabled = false;
+    if      (e.code === "auth/email-already-in-use")    errEl.textContent = "Cet email est déjà utilisé.";
+    else if (e.code === "auth/weak-password")           errEl.textContent = "Mot de passe trop court (6 min).";
+    else if (e.code === "auth/invalid-email")           errEl.textContent = "Adresse email invalide.";
+    else if (e.code === "auth/network-request-failed")  errEl.textContent = "Erreur réseau — vérifie ta connexion et réessaie.";
+    else errEl.textContent = `Erreur lors de l'inscription (${e.code || e.message}).`;
   }
 });
 
