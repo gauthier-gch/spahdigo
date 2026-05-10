@@ -31,6 +31,7 @@ window.showCertifTooltip = function(el) {
 };
 
 window.addEventListener("user-ready", () => {
+  processAcceptedRequests();
   renderSocialPage();
   listenForBadges();
 });
@@ -241,16 +242,32 @@ async function loadRequests() {
     `;
     container.appendChild(card);
   });
-  container.querySelectorAll(".btn-accept").forEach(btn => { btn.addEventListener("click", async () => { await acceptRequest(btn.dataset.id, btn.dataset.from); btn.closest("div[style]").remove(); loadFriends(); }); });
+  container.querySelectorAll(".btn-accept").forEach(btn => { btn.addEventListener("click", async () => { try { btn.disabled=true; await acceptRequest(btn.dataset.id, btn.dataset.from); btn.closest("div[style]").remove(); loadFriends(); } catch(e) { btn.disabled=false; alert("Erreur lors de l'acceptation. Réessaie."); console.error(e); } }); });
   container.querySelectorAll(".btn-decline").forEach(btn => { btn.addEventListener("click", async () => { await updateDoc(doc(db, "friendRequests", btn.dataset.id), { status: "declined" }); btn.closest("div[style]").remove(); }); });
 }
 
 async function acceptRequest(requestId, fromUid) {
   const me = auth.currentUser;
+  // Only update own document — Firestore rules forbid writing to another user's doc.
+  // The sender's side is handled by processAcceptedRequests() on their next app load.
   await updateDoc(doc(db, "users", me.uid), { friends: arrayUnion(fromUid) });
-  await updateDoc(doc(db, "users", fromUid), { friends: arrayUnion(me.uid) });
   await updateDoc(doc(db, "friendRequests", requestId), { status: "accepted" });
   await createConversation(me.uid, fromUid);
+}
+
+async function processAcceptedRequests() {
+  const me = auth.currentUser;
+  const snap = await getDocs(query(
+    collection(db, "friendRequests"),
+    where("fromUid", "==", me.uid),
+    where("status", "==", "accepted")
+  ));
+  for (const d of snap.docs) {
+    const req = d.data();
+    await updateDoc(doc(db, "users", me.uid), { friends: arrayUnion(req.toUid) });
+    await updateDoc(doc(db, "friendRequests", d.id), { status: "processed" });
+    await createConversation(me.uid, req.toUid);
+  }
 }
 
 async function createConversation(uid1, uid2) {

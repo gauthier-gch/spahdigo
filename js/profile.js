@@ -27,9 +27,30 @@ window.showCertifTooltip = function(el) {
 };
 
 window.addEventListener("user-ready", () => {
+  processAcceptedRequests();
   renderProfilePage();
   listenForFriendRequestBadge();
 });
+
+// ── Process accepted outgoing requests ────────────────────────
+async function processAcceptedRequests() {
+  const me = auth.currentUser;
+  const snap = await getDocs(query(
+    collection(db, "friendRequests"),
+    where("fromUid", "==", me.uid),
+    where("status", "==", "accepted")
+  ));
+  for (const d of snap.docs) {
+    const req = d.data();
+    await updateDoc(doc(db, "users", me.uid), { friends: arrayUnion(req.toUid) });
+    await updateDoc(doc(db, "friendRequests", d.id), { status: "processed" });
+    // Ensure a conversation exists
+    const convQ = query(collection(db, "conversations"), where("members", "array-contains", me.uid));
+    const convSnap = await getDocs(convQ);
+    const exists = convSnap.docs.some(c => !c.data().isGroup && c.data().members.includes(req.toUid));
+    if (!exists) await addDoc(collection(db, "conversations"), { members: [me.uid, req.toUid], isGroup: false, lastMessage: "", updatedAt: serverTimestamp() });
+  }
+}
 
 // ── Friend request badge on nav ────────────────────────────────
 function listenForFriendRequestBadge() {
@@ -463,18 +484,24 @@ async function openFriendRequests() {
 
   container.querySelectorAll(".btn-accept").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const me = auth.currentUser;
-      await updateDoc(doc(db,"users",me.uid), { friends: arrayUnion(btn.dataset.from) });
-      await updateDoc(doc(db,"users",btn.dataset.from), { friends: arrayUnion(me.uid) });
-      await updateDoc(doc(db,"friendRequests",btn.dataset.id), { status:"accepted" });
-      // Create conversation
-      const q = query(collection(db,"conversations"), where("members","array-contains",me.uid));
-      const existing = await getDocs(q);
-      let found = false;
-      existing.forEach(d => { if (!d.data().isGroup && d.data().members.includes(btn.dataset.from)) found = true; });
-      if (!found) await addDoc(collection(db,"conversations"), { members:[me.uid,btn.dataset.from], isGroup:false, lastMessage:"", updatedAt:serverTimestamp() });
-      btn.closest("div[style]").remove();
-      renderProfilePage();
+      try {
+        btn.disabled = true;
+        const me = auth.currentUser;
+        // Only update own document — Firestore rules forbid writing to another user's doc.
+        // The sender picks up the acceptance via processAcceptedRequests() on their next load.
+        await updateDoc(doc(db,"users",me.uid), { friends: arrayUnion(btn.dataset.from) });
+        await updateDoc(doc(db,"friendRequests",btn.dataset.id), { status:"accepted" });
+        // Create conversation
+        const q = query(collection(db,"conversations"), where("members","array-contains",me.uid));
+        const existing = await getDocs(q);
+        const found = existing.docs.some(d => !d.data().isGroup && d.data().members.includes(btn.dataset.from));
+        if (!found) await addDoc(collection(db,"conversations"), { members:[me.uid,btn.dataset.from], isGroup:false, lastMessage:"", updatedAt:serverTimestamp() });
+        btn.closest("div[style]").remove();
+        renderProfilePage();
+      } catch(e) {
+        btn.disabled = false;
+        console.error("Accept friend request failed:", e);
+      }
     });
   });
   container.querySelectorAll(".btn-decline").forEach(btn => {
