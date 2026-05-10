@@ -87,15 +87,19 @@ document.getElementById("btn-register").addEventListener("click", async () => {
   btn.textContent = "Création du compte..."; btn.disabled = true;
 
   try {
-    // Pseudo uniqueness check — was previously outside try/catch, causing
-    // silent failures on network errors (e.g. slow connections abroad)
+    // Create the account first so the user is authenticated before querying
+    // Firestore — security rules block unauthenticated reads on the users collection
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+
+    // Pseudo uniqueness check runs while authenticated (Firestore rules allow it)
     const pseudoSnap = await getDocs(query(collection(db, "users"), where("pseudo", "==", pseudo)));
     if (!pseudoSnap.empty) {
+      await cred.user.delete();
       errEl.textContent = "Ce pseudo est déjà pris, choisis-en un autre.";
       btn.textContent = "Créer mon compte"; btn.disabled = false;
       return;
     }
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
+
     await updateProfile(cred.user, { displayName: pseudo });
     await setDoc(doc(db, "users", cred.user.uid), {
       pseudo, firstname, lastname, name, email, phone,
