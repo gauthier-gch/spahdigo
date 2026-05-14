@@ -13,11 +13,12 @@ const CRITERIA_LABELS = {
 window.addEventListener("user-ready", () => { renderAnalyticsPage(); });
 
 let currentFilter = "all", currentGroupId = null, currentCriteria = "globalScore";
-
-// Cached bar list for client-side search filtering
 let currentBars = [];
+let _loadId = 0; // incremented on each loadTopBars call to discard stale results
 
 function renderAnalyticsPage() {
+  currentFilter = "all"; currentGroupId = null; currentCriteria = "globalScore";
+  currentBars = []; _loadId = 0;
   page.innerHTML = `
     <div style="padding:16px 20px 0;"><h2 class="page-title">Analytics</h2></div>
     <div class="analytics-body">
@@ -45,6 +46,9 @@ function renderAnalyticsPage() {
         <button class="filter-chip" data-crit="distance_travail">Distance Travail</button>
         <button class="filter-chip" data-crit="viabilite_saisonniere">Viabilité Sais.</button>
         <button class="filter-chip" data-crit="places">Places</button>
+        <button class="filter-chip" data-crit="beaute">Beauté</button>
+        <button class="filter-chip" data-crit="variete_carte">Variété Carte</button>
+        <button class="filter-chip" data-crit="toilettes">Toilettes</button>
       </div>
       <!-- Search bar -->
       <div style="margin-bottom:12px;">
@@ -55,12 +59,12 @@ function renderAnalyticsPage() {
     </div>
   `;
 
-  document.getElementById("filter-who").addEventListener("click", async e => {
+  document.getElementById("filter-who").addEventListener("click", e => {
     const btn = e.target.closest("[data-who]"); if (!btn) return;
     document.querySelectorAll("#filter-who .filter-chip").forEach(c => c.classList.remove("active"));
     btn.classList.add("active"); currentFilter = btn.dataset.who; currentGroupId = null;
     const gs = document.getElementById("group-selector");
-    if (currentFilter === "group") { gs.style.display="block"; await loadGroupOptions(); }
+    if (currentFilter === "group") { gs.style.display="block"; loadGroupOptions(); }
     else { gs.style.display="none"; loadTopBars(); }
   });
 
@@ -85,16 +89,20 @@ function renderAnalyticsPage() {
 }
 
 async function loadGroupOptions() {
+  const myLoad = ++_loadId;
   const me = auth.currentUser;
   const snap = await getDocs(query(collection(db, "conversations"), where("members","array-contains",me.uid), where("isGroup","==",true)));
+  if (myLoad !== _loadId) return; // user switched filter while fetching
   const select = document.getElementById("group-select");
   select.innerHTML = `<option value="">Choisir un groupe...</option>`;
-  if (snap.empty) { select.innerHTML += `<option disabled>Aucun groupe</option>`; document.getElementById("top-bars-list").innerHTML=`<p style="color:var(--muted);font-size:13px;text-align:center;">Créez un groupe depuis l'onglet Messages !</p>`; return; }
+  const listEl = document.getElementById("top-bars-list");
+  if (snap.empty) { select.innerHTML += `<option disabled>Aucun groupe</option>`; listEl.innerHTML=`<p style="color:var(--muted);font-size:13px;text-align:center;">Créez un groupe depuis l'onglet Messages !</p>`; return; }
   snap.forEach(d => { const opt=document.createElement("option"); opt.value=d.id; opt.textContent=d.data().name||"Groupe"; select.appendChild(opt); });
-  document.getElementById("top-bars-list").innerHTML = `<p style="color:var(--muted);font-size:13px;">Sélectionnez un groupe.</p>`;
+  listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;">Sélectionnez un groupe.</p>`;
 }
 
 async function loadTopBars() {
+  const myLoad = ++_loadId;
   const listEl = document.getElementById("top-bars-list");
   if (!listEl) return;
   listEl.innerHTML = `<p style="color:var(--muted);font-size:13px;">Chargement...</p>`;
@@ -143,6 +151,9 @@ async function loadTopBars() {
     .filter(([,b]) => { if (!requiredRaters) return b.scores.length>0; for(const uid of requiredRaters){if(!b.raters.has(uid))return false;} return true; })
     .map(([id,b]) => ({ id, name:b.name, count:b.raters.size, avg:b.scores.reduce((a,v)=>a+v,0)/b.scores.length }))
     .sort((a,b)=>b.avg-a.avg).slice(0,1000);
+
+  // Discard if a newer filter was selected while we were fetching
+  if (myLoad !== _loadId) return;
 
   if (!sorted.length) {
     listEl.innerHTML = currentFilter==="group"
