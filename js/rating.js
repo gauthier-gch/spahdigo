@@ -95,8 +95,19 @@ document.getElementById("btn-save-new-bar").addEventListener("click", async()=>{
   const lng     = parseFloat(selectedAddr.lon);
   const address = selectedAddr.display_name;
 
-  // ── Check for similar existing bars ───────────────────────
+  // ── Check for exact same address (same GPS coordinates) ───
   await fetchAllBars();
+  const exactMatch = allBars.find(bar =>
+    bar.lat && bar.lng && distanceKm(lat, lng, bar.lat, bar.lng) < 0.01
+  );
+  if (exactMatch) {
+    saveBtn.textContent = "Enregistrer et noter"; saveBtn.disabled = false;
+    const decision = await showDuplicateWarning([exactMatch], name, true);
+    if (decision === "rate-existing") return;
+    if (decision === "cancel") return;
+  }
+
+  // ── Check for similar existing bars ───────────────────────
   const similar = findSimilarBars(name, lat, lng, allBars);
 
   if (similar.length > 0) {
@@ -172,7 +183,7 @@ function findSimilarBars(name, lat, lng, bars) {
 }
 
 // ── Duplicate warning modal ────────────────────────────────────
-function showDuplicateWarning(similarBars, newName) {
+function showDuplicateWarning(similarBars, newName, exactAddress = false) {
   return new Promise(resolve => {
     const overlay = document.createElement("div");
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:3000;display:flex;align-items:center;justify-content:center;padding:24px;";
@@ -187,9 +198,12 @@ function showDuplicateWarning(similarBars, newName) {
     overlay.innerHTML = `
       <div style="background:var(--dark2);border-radius:24px;padding:24px;width:100%;max-width:360px;border:1px solid var(--border);">
         <div style="font-size:22px;margin-bottom:8px;">⚠️</div>
-        <h3 style="font-family:var(--font-display);font-size:22px;color:var(--gold);margin-bottom:8px;letter-spacing:1px;">Bar similaire detecte</h3>
+        <h3 style="font-family:var(--font-display);font-size:22px;color:var(--gold);margin-bottom:8px;letter-spacing:1px;">${exactAddress ? "Adresse déjà utilisée" : "Bar similaire detecte"}</h3>
         <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5;">
-          Un ou plusieurs bars ressemblant a <strong style="color:var(--text);">${newName}</strong> existent deja :
+          ${exactAddress
+            ? `Un bar existe déjà à cette adresse exacte :`
+            : `Un ou plusieurs bars ressemblant a <strong style="color:var(--text);">${newName}</strong> existent deja :`
+          }
         </p>
         ${listHTML}
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px;">
@@ -340,3 +354,10 @@ document.getElementById("btn-submit-rating").addEventListener("click", async()=>
   }
   modal.classList.add("hidden"); allBars=[]; loadBarsOnMap();
 });
+
+// ── Open rating modal pre-filled for a specific bar (used by map) ─
+export async function openRateModalForBar(bar) {
+  resetToSearch();
+  modal.classList.remove("hidden");
+  await openRateStep(bar);
+}

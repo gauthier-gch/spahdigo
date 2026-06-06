@@ -120,10 +120,6 @@ onAuthStateChanged(auth, user => {
     document.getElementById("auth-screen").classList.remove("active");
     document.getElementById("app-screen").classList.add("active");
     window.dispatchEvent(new CustomEvent("user-ready", { detail: user }));
-    // Request notification permission for app badge
-    if ("Notification" in window && Notification.permission === "default") {
-      setTimeout(() => Notification.requestPermission(), 1500);
-    }
   } else {
     document.getElementById("auth-screen").classList.add("active");
     document.getElementById("app-screen").classList.remove("active");

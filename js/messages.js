@@ -133,10 +133,13 @@ async function loadConversations() {
 function openChat(convoId, title, isGroup = false) {
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;inset:0;background:var(--dark2);z-index:2000;display:flex;flex-direction:column;";
+  const titleEl = isGroup
+    ? `<button id="group-header-btn" style="font-family:var(--font-display);font-size:22px;letter-spacing:1px;color:var(--gold);background:none;border:none;cursor:pointer;padding:0;text-align:left;display:flex;align-items:center;gap:6px;">${title}<span style="font-size:13px;color:var(--muted);">▸</span></button>`
+    : `<span style="font-family:var(--font-display);font-size:24px;letter-spacing:1px;color:var(--gold);">${title}</span>`;
   overlay.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--dark);flex-shrink:0;">
       <button id="back-chat" style="background:var(--dark3);border:none;color:var(--text);width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">&#8592;</button>
-      <span style="font-family:var(--font-display);font-size:24px;letter-spacing:1px;color:var(--gold);">${title}</span>
+      ${titleEl}
     </div>
     <div id="messages-area" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px;"></div>
     <div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border);padding-bottom:calc(12px + env(safe-area-inset-bottom));flex-shrink:0;">
@@ -146,6 +149,10 @@ function openChat(convoId, title, isGroup = false) {
   `;
   document.body.appendChild(overlay);
   document.getElementById("back-chat").addEventListener("click", () => { unsub(); overlay.remove(); loadConversations(); });
+  if (isGroup) {
+    const ghBtn = document.getElementById("group-header-btn");
+    if (ghBtn) ghBtn.addEventListener("click", () => openGroupInfo(convoId));
+  }
 
   const msgArea     = document.getElementById("messages-area");
   const senderCache = {};
@@ -251,6 +258,99 @@ function openChat(convoId, title, isGroup = false) {
 
   document.getElementById("send-msg").addEventListener("click", sendMessage);
   document.getElementById("msg-input").addEventListener("keydown", e => { if (e.key==="Enter") sendMessage(); });
+}
+
+// ── Group info & member management ────────────────────────────
+async function openGroupInfo(convoId) {
+  const me = auth.currentUser;
+  const convoSnap = await getDoc(doc(db, "conversations", convoId));
+  if (!convoSnap.exists()) return;
+  const convo = convoSnap.data();
+  const memberIds = convo.members || [];
+
+  // Fetch member profiles
+  const members = [];
+  for (const uid of memberIds) {
+    try {
+      const s = await getDoc(doc(db, "users", uid));
+      if (s.exists()) members.push({ uid, ...s.data() });
+    } catch(_) {}
+  }
+
+  // Friends not already in the group
+  const meSnap = await getDoc(doc(db, "users", me.uid));
+  const myFriendIds = meSnap.data()?.friends || [];
+  const addable = [];
+  for (const fid of myFriendIds) {
+    if (memberIds.includes(fid)) continue;
+    try {
+      const s = await getDoc(doc(db, "users", fid));
+      if (s.exists()) addable.push({ uid: fid, ...s.data() });
+    } catch(_) {}
+  }
+
+  const membersHTML = members.map(m => `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--dark3);border-radius:10px;border:1px solid var(--border);">
+      <div style="width:36px;height:36px;border-radius:50%;background:var(--dark);border:2px solid var(--border);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">
+        ${m.photoURL ? `<img src="${m.photoURL}" style="width:100%;height:100%;object-fit:cover;" />` : "&#129489;"}
+      </div>
+      <span style="font-size:14px;font-weight:600;">@${m.pseudo || "?"}${m.uid === me.uid ? ' <span style="font-size:11px;color:var(--muted);font-weight:400;">(moi)</span>' : ""}</span>
+    </div>
+  `).join("");
+
+  const addableHTML = addable.length ? `
+    <h4 style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin:20px 0 10px;">Ajouter des membres</h4>
+    ${addable.map(f => `
+      <label style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;cursor:pointer;border:1px solid var(--border);margin-bottom:6px;">
+        <input type="checkbox" value="${f.uid}" style="width:18px;height:18px;accent-color:var(--gold);cursor:pointer;flex-shrink:0;" />
+        <div style="width:32px;height:32px;border-radius:50%;background:var(--dark3);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">
+          ${f.photoURL ? `<img src="${f.photoURL}" style="width:100%;height:100%;object-fit:cover;" />` : "&#129489;"}
+        </div>
+        <span style="font-size:14px;font-weight:500;">@${f.pseudo}</span>
+      </label>
+    `).join("")}
+    <button id="btn-add-to-group" class="btn btn-primary" style="margin-top:8px;">Ajouter au groupe</button>
+    <p id="add-group-status" style="font-size:12px;color:var(--muted);text-align:center;margin-top:8px;min-height:16px;"></p>
+  ` : "";
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);z-index:3500;display:flex;align-items:flex-end;";
+  overlay.innerHTML = `
+    <div style="background:var(--dark2);border-radius:24px 24px 0 0;width:100%;max-height:80vh;display:flex;flex-direction:column;border-top:1px solid var(--border);animation:fadeInUp .2s ease;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:20px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        <h3 style="font-family:var(--font-display);font-size:22px;color:var(--gold);">${convo.name || "Groupe"}</h3>
+        <button id="close-group-info" style="background:var(--dark3);border:none;color:var(--muted);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;">&#10005;</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:20px;">
+        <h4 style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;">${memberIds.length} membre${memberIds.length > 1 ? "s" : ""}</h4>
+        <div style="display:flex;flex-direction:column;gap:6px;">${membersHTML}</div>
+        ${addableHTML}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById("close-group-info").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+
+  if (addable.length) {
+    document.getElementById("btn-add-to-group").addEventListener("click", async () => {
+      const checked = [...overlay.querySelectorAll("input[type=checkbox]:checked")].map(c => c.value);
+      const statusEl = document.getElementById("add-group-status");
+      if (!checked.length) { statusEl.textContent = "Sélectionne au moins un ami."; statusEl.style.color = "var(--danger)"; return; }
+      const addBtn = document.getElementById("btn-add-to-group");
+      addBtn.textContent = "Ajout en cours..."; addBtn.disabled = true;
+      try {
+        await updateDoc(doc(db, "conversations", convoId), { members: arrayUnion(...checked) });
+        statusEl.textContent = `${checked.length} membre(s) ajouté(s) !`;
+        statusEl.style.color = "var(--gold)";
+        setTimeout(() => overlay.remove(), 1200);
+      } catch(e) {
+        addBtn.textContent = "Ajouter au groupe"; addBtn.disabled = false;
+        statusEl.textContent = "Erreur. Réessaie."; statusEl.style.color = "var(--danger)";
+        console.error(e);
+      }
+    });
+  }
 }
 
 // ── Create group ───────────────────────────────────────────────

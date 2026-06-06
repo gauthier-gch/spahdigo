@@ -1,6 +1,6 @@
 // js/bar-details.js — Shared bar details modal (analytics + friend profile)
 import { db } from "./firebase-config.js";
-import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const CRITERIA = [
   { key:"prix_biere",            label:"Prix Bière"            },
@@ -16,6 +16,12 @@ const CRITERIA = [
   { key:"places",                label:"Places"                },
   { key:"toilettes",             label:"Toilettes"             },
 ];
+
+function formatReviewDate(ts) {
+  if (!ts) return "";
+  const d = ts.toDate ? ts.toDate() : new Date((ts.seconds || 0) * 1000);
+  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+}
 
 export async function openBarDetailsModal(barId, barName) {
   const overlay = document.createElement("div");
@@ -54,6 +60,7 @@ export async function openBarDetailsModal(barId, barName) {
   }).filter(c => c.avg !== null);
 
   const comments = ratings.filter(r => r.comment);
+  const latestDate = ratings.length ? formatReviewDate(ratings[0].createdAt) : null;
 
   const criteriaHTML = criteriaRows.length ? `
     <h3 style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;">Notes par critère</h3>
@@ -71,19 +78,21 @@ export async function openBarDetailsModal(barId, barName) {
     <h3 style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:10px;">Commentaires</h3>
     ${comments.slice(0, 8).map(r => `
       <div style="padding:10px 12px;background:var(--dark3);border-radius:10px;border-left:2px solid var(--gold);margin-bottom:8px;">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;display:flex;align-items:center;gap:4px;">
-          <strong style="color:var(--text);">${r.userName}</strong>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+          <strong data-user-id="${r.userId}" style="color:var(--text);cursor:pointer;border-bottom:1px dotted var(--muted);">${r.userName}</strong>
           <span>·</span>
           <span style="color:var(--gold);">${r.globalScore?.toFixed(1)}/10</span>
+          ${r.createdAt ? `<span>·</span><span style="color:var(--muted);font-size:10px;">${formatReviewDate(r.createdAt)}</span>` : ""}
         </div>
         <div style="font-size:13px;color:var(--text);line-height:1.5;">${r.comment}</div>
       </div>
     `).join("")}
   ` : `<p style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0;">Aucun commentaire pour l'instant.</p>`;
 
-  document.getElementById("bar-details-body").innerHTML = `
+  const body = document.getElementById("bar-details-body");
+  body.innerHTML = `
     <!-- Stats overview -->
-    <div style="display:flex;gap:12px;margin-bottom:24px;">
+    <div style="display:flex;gap:12px;margin-bottom:${latestDate ? "8px" : "24px"};">
       <div style="flex:1;background:var(--dark3);border-radius:14px;padding:18px;text-align:center;border:1px solid var(--border);">
         <div style="font-family:var(--font-display);font-size:42px;color:var(--gold);">${avgScore !== null ? avgScore.toFixed(1) : "—"}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:1px;">Note moyenne</div>
@@ -93,7 +102,23 @@ export async function openBarDetailsModal(barId, barName) {
         <div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:1px;">Avis</div>
       </div>
     </div>
+    ${latestDate ? `<p style="font-size:11px;color:var(--muted);text-align:right;margin-bottom:20px;">Dernière note : ${latestDate}</p>` : ""}
     ${criteriaHTML}
     ${commentsHTML}
   `;
+
+  // #7 — Make comment author names tappable → open their profile
+  body.querySelectorAll("[data-user-id]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const userId = el.dataset.userId;
+      if (!userId) return;
+      try {
+        const userSnap = await getDoc(doc(db, "users", userId));
+        if (userSnap.exists()) {
+          const { openFriendProfileFromOutside } = await import("./profile.js");
+          openFriendProfileFromOutside(userId, userSnap.data());
+        }
+      } catch(e) { console.error("Could not open profile:", e); }
+    });
+  });
 }
