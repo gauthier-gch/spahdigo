@@ -514,9 +514,15 @@ async function openFriendRequests() {
 
 // ── Edit profile ───────────────────────────────────────────────
 async function openEditProfile() {
-  const user     = auth.currentUser;
-  const userSnap = await getDoc(doc(db,"users",user.uid));
-  const userData = userSnap.data() || {};
+  const user = auth.currentUser;
+  if (!user) return;
+  let userData = {};
+  try {
+    const userSnap = await getDoc(doc(db,"users",user.uid));
+    userData = userSnap.data() || {};
+  } catch(e) {
+    console.error("openEditProfile: could not fetch user doc:", e);
+  }
 
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto;";

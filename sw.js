@@ -1,5 +1,5 @@
 // sw.js — Service Worker for Spahdigo PWA
-const CACHE = "spahdigo-v3";
+const CACHE = "spahdigo-v4";
 const BASE  = "/spahdigo";
 const ASSETS = [
   `${BASE}/`,

@@ -14,6 +14,14 @@ let allMarkers = [];
 let currentMapFilter = "all";
 let ratedBarIds = new Set();
 
+// ── Map theme state ────────────────────────────────────────────
+const TILE_URLS = {
+  dark:  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+};
+let currentTheme = "dark";
+let tileLayer    = null;
+
 // ── Metro lines state ──────────────────────────────────────────
 let metroLayerGroup = null;
 let metroLoaded     = false;
@@ -82,6 +90,20 @@ function initMap() {
   noteBtn.innerHTML = "🍺 Noter un bar";
   mapContainer.appendChild(noteBtn);
 
+  // ── Map theme toggle button (☀️ / 🌙) ─────────────────────
+  const themeBtn = document.createElement("button");
+  themeBtn.id = "btn-map-theme";
+  themeBtn.innerHTML = "☀️";
+  themeBtn.title = "Thème clair / sombre";
+  themeBtn.style.cssText = "position:absolute;bottom:84px;right:118px;z-index:500;width:44px;height:44px;background:var(--dark2);border:1px solid var(--border);color:var(--text);border-radius:50%;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.5);transition:all .2s;backdrop-filter:blur(6px);";
+  mapContainer.appendChild(themeBtn);
+  themeBtn.addEventListener("click", () => {
+    currentTheme = currentTheme === "dark" ? "light" : "dark";
+    if (tileLayer) leafletMap.removeLayer(tileLayer);
+    tileLayer = L.tileLayer(TILE_URLS[currentTheme], { attribution:"© OpenStreetMap © CartoDB", subdomains:"abcd", maxZoom:19 }).addTo(leafletMap);
+    themeBtn.innerHTML = currentTheme === "dark" ? "☀️" : "🌙";
+  });
+
   // ── Metro toggle button (bottom-right, beside geo button) ──
   const metroBtn = document.createElement("button");
   metroBtn.id = "btn-metro-toggle";
@@ -106,7 +128,7 @@ function initMap() {
   // ── Initialize Leaflet ─────────────────────────────────────
   leafletMap = L.map("map", { center:[48.8566,2.3522], zoom:13, zoomControl:false });
   window._leafletMap = leafletMap;
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { attribution:"© OpenStreetMap © CartoDB", subdomains:"abcd", maxZoom:19 }).addTo(leafletMap);
+  tileLayer = L.tileLayer(TILE_URLS.dark, { attribution:"© OpenStreetMap © CartoDB", subdomains:"abcd", maxZoom:19 }).addTo(leafletMap);
 
   noteBtn.addEventListener("click", () => { document.getElementById("modal-rate").classList.remove("hidden"); window.dispatchEvent(new Event("open-rate-modal")); });
   setTimeout(() => leafletMap.invalidateSize(), 100);
@@ -424,6 +446,8 @@ export async function addBarMarker(id, bar) {
   marker.on("click", async () => {
     const q = query(collection(db,"ratings"), where("barId","==",id), orderBy("createdAt","desc"), limit(5));
     const snap = await getDocs(q);
+
+    const popupEl = document.createElement("div");
     let commentsHtml = "";
     snap.forEach(d => {
       const r = d.data();
@@ -436,11 +460,25 @@ export async function addBarMarker(id, bar) {
         </div>`;
     });
     if (!commentsHtml) commentsHtml = '<div style="font-size:12px;color:#8a8a95;margin-top:8px;font-style:italic;">Aucun commentaire pour l\'instant.</div>';
-    marker.bindPopup(`
+
+    popupEl.innerHTML = `
       <div class="popup-bar-name">${bar.name}</div>
       <div class="popup-bar-score" style="margin-top:4px;">${bar.address}<br/>Note moyenne : <strong>${avgLabel}/10</strong> (${bar.ratingCount || 0} avis)</div>
       <div style="margin-top:10px;font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#8a8a95;">Commentaires</div>
       ${commentsHtml}
-    `, { maxWidth:280 }).openPopup();
+    `;
+
+    // "Rate this bar" button inside the popup
+    const rateBtn = document.createElement("button");
+    rateBtn.innerHTML = "🍺 Noter ce bar";
+    rateBtn.style.cssText = "margin-top:10px;width:100%;background:var(--gold);color:var(--dark);border:none;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:600;font-family:var(--font-body);cursor:pointer;";
+    rateBtn.addEventListener("click", async () => {
+      leafletMap.closePopup();
+      const { openRateModalForBar } = await import("./rating.js");
+      openRateModalForBar({ id, ...bar });
+    });
+    popupEl.appendChild(rateBtn);
+
+    marker.bindPopup(popupEl, { maxWidth:280 }).openPopup();
   });
 }
